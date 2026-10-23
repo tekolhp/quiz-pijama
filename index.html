@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Festa do Pijama no Fundo do Mar</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: pixel-art underwater night; one screen at a time; a canvas "aquarium" strip on top where the pajama crew walks around and does gags */
+:root{
+  --bg:#0b1a3a; --bg2:#102a5c; --surface:#16305f; --fg:#f5f1dc; --muted:#9fb4d9; --line:#2d4f8f;
+  --accent:#ffcf3f; --accent-fg:#1a1200; --coral:#ff6f61; --good:#5be38a; --bad:#ff6b6b; --good-bg:#17422e; --bad-bg:#4a2328;
+  --display:"Press Start 2P",monospace; --body:"Pixelify Sans","Nunito",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:20px;line-height:1.35;margin:0;
+  padding-block:0 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background-image:linear-gradient(var(--bg) 0,var(--bg2) 100%)}
+.aquarium{position:sticky;top:0;z-index:5;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px))) 0 calc(-1*max(16px,env(safe-area-inset-right,0px)));background:#061128}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:20px;padding-top:18px}
+h1{font-family:var(--display);font-size:clamp(17px,4.6vw,26px);line-height:1.35;margin:0;text-wrap:balance;color:var(--accent);text-shadow:3px 3px 0 #000}
+h2{font-family:var(--display);font-size:13px;margin:0;line-height:1.5}
+p{margin:0}
+.lead{color:var(--muted)}
+.label{font-family:var(--display);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card{background:var(--surface);border:3px solid var(--line);box-shadow:4px 4px 0 #000;padding:16px;display:flex;flex-direction:column;gap:12px}
+input[type=text]{font:inherit;padding:10px 12px;border:3px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0;border-radius:0}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.players{display:flex;flex-direction:column;gap:8px}
+.player-row{display:flex;gap:8px}
+.btn{font-family:var(--body);font-weight:700;font-size:19px;border:3px solid var(--line);border-radius:0;padding:12px 16px;cursor:pointer;background:var(--bg);color:var(--fg);box-shadow:3px 3px 0 #000}
+.btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:#a37d00;font-family:var(--display);font-size:12px;padding:16px 20px}
+.btn.ghost{background:transparent;box-shadow:none}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.themes{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.theme{display:flex;align-items:center;gap:10px;padding:10px 12px;border:3px solid var(--line);background:var(--bg);cursor:pointer;font-weight:700;user-select:none}
+.theme input{width:20px;height:20px;accent-color:var(--accent);margin:0;flex:0 0 auto}
+.theme .n{margin-left:auto;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.theme:has(input:checked){border-color:var(--accent);background:var(--surface)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg .btn{padding:8px 14px}
+.seg .btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:#a37d00}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.turn{font-family:var(--display);font-size:13px;line-height:1.6;color:var(--accent)}
+.turn small{display:block;font-family:var(--body);font-weight:500;font-size:15px;color:var(--muted)}
+.progress{height:10px;background:#061128;border:2px solid var(--line);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--good);width:0;transition:width .3s}
+.qtheme{display:inline-flex;align-self:flex-start;background:var(--coral);color:#1a0400;font-family:var(--display);font-size:8px;padding:6px 8px}
+.question{font-weight:700;font-size:clamp(24px,6vw,32px);line-height:1.2;text-wrap:balance}
+.options{display:grid;gap:10px}
+.opt{pointer-events:none;text-align:left;display:flex;gap:12px;align-items:center;font-size:19px;line-height:1.25}
+.opt b{flex:0 0 30px;height:30px;display:grid;place-items:center;background:var(--surface);font-family:var(--display);font-size:11px}
+.opt.right{background:var(--good-bg);border-color:var(--good)}
+.opt.wrong{background:var(--bad-bg);border-color:var(--bad)}
+.opt.dim{opacity:.45}
+.feedback{font-family:var(--display);font-size:11px;line-height:1.7}
+.feedback.ok{color:var(--good)}.feedback.no{color:var(--bad)}
+.scores{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;gap:8px;align-items:center;padding:5px 10px;background:var(--surface);border:2px solid var(--line);font-weight:700;font-size:16px}
+.chip.active{border-color:var(--accent)}
+.chip em{font-style:normal;font-family:var(--display);font-size:10px;font-variant-numeric:tabular-nums}
+.rank ol{margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.rank li{list-style:none;display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border:3px solid var(--line)}
+.rank li:first-child{border-color:var(--accent)}
+.rank .pos{font-family:var(--display);font-size:14px;width:40px;color:var(--muted)}
+.rank li:first-child .pos{color:var(--accent)}
+.rank .pts{margin-left:auto;font-family:var(--display);font-size:14px;font-variant-numeric:tabular-nums}
+.clock{font-family:var(--display);font-size:22px;color:var(--good);font-variant-numeric:tabular-nums}
+.clock.warn{color:var(--bad)}
+.tbar i{background:var(--good);transition:width 1s linear}
+.tbar i.warn{background:var(--bad)}
+.chip.btn{cursor:pointer;padding:10px 14px;font-size:18px;box-shadow:none}
+.chip.hit{background:var(--good-bg);border-color:var(--good)}
+.chip.hit::after{content:"✓";font-family:var(--display);font-size:11px;color:var(--good)}
+#marking{display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1 1 140px}
+.stack{display:flex;flex-direction:column;gap:20px}
+@media (prefers-reduced-motion:reduce){.progress i{transition:none}}
+
+/* team color tint on player phone */
+.dot{display:inline-block;width:12px;height:12px;background:var(--team,#999);border:2px solid #000;flex:0 0 auto}
+body.teamed{background-image:linear-gradient(color-mix(in srgb,var(--team) 35%,var(--bg)) 0,var(--bg) 60%)}
+body.teamed .card{border-color:var(--team)}
+.teamname{font-family:var(--display);font-size:14px;color:var(--team);text-shadow:2px 2px 0 #000;line-height:1.6}
+.code{font-family:var(--display);font-size:clamp(34px,12vw,56px);letter-spacing:.2em;color:var(--accent);text-shadow:4px 4px 0 #000;text-align:center;padding:10px 0}
+.url{font-size:15px;color:var(--muted);word-break:break-all;user-select:all}
+input.big{font-family:var(--display);font-size:22px;letter-spacing:.3em;text-transform:uppercase;text-align:center;padding:14px}
+textarea{font:inherit;font-size:20px;padding:12px;border:3px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0;border-radius:0;resize:vertical;min-height:70px}
+textarea:focus-visible{outline:3px solid var(--accent)}
+.arow{display:flex;gap:10px;align-items:center;text-align:left;font-size:17px;width:100%;padding:10px 12px}
+.arow .ans{flex:1;min-width:0;overflow-wrap:anywhere}
+.arow em{font-style:normal;font-family:var(--display);font-size:10px;flex:0 0 auto}
+.arow.hit{background:var(--good-bg);border-color:var(--good)}
+.answers{display:flex;flex-direction:column;gap:8px}
+.correct{font-family:var(--display);font-size:11px;color:var(--good);line-height:1.7}
+.theme.team{grid-column:span 2}
+.home{display:grid;gap:12px}
+.small{font-size:15px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="aquarium"><canvas id="sea" width="320" height="110" aria-label="Turma do pijama passeando no fundo do mar"></canvas></div>
+<main>
+
+<section id="home">
+  <div class="stack">
+    <div>
+      <p class="label">Quiz em família · host + equipes</p>
+      <h1>Festa do Pijama no Fundo do Mar</h1>
+      <p class="lead">Quem apresenta cria a sala no tablet. Cada equipe entra pelo celular com o código, vira um personagem da turma e responde no tempo.</p>
+    </div>
+    <div class="home">
+      <button class="btn primary" id="btnHost" type="button">Criar sala (sou o host)</button>
+      <button class="btn" id="btnJoin" type="button">Entrar numa sala</button>
+    </div>
+    <p class="lead" id="homeMsg" hidden></p>
+  </div>
+</section>
+
+<section id="hostLobby" hidden>
+  <div class="stack">
+    <div>
+      <p class="label">Sala aberta · manda o código</p>
+      <div class="code" id="roomCode"></div>
+      <p class="url" id="joinUrl"></p>
+      <button class="btn ghost" id="copyUrl" type="button" style="padding:6px 10px;font-size:15px">Copiar link</button>
+    </div>
+    <div class="card">
+      <div class="topbar"><p class="label">Equipes conectadas</p><span class="small" id="confirmedCount"></span></div>
+      <p class="small">Marca quem vai jogar. Só as confirmadas participam.</p>
+      <div class="themes" id="teamList"></div>
+    </div>
+    <div class="card">
+      <div class="topbar">
+        <p class="label">Temas</p>
+        <button class="btn ghost" id="mixAll" type="button" style="padding:6px 10px;font-size:15px">Misturar tudo</button>
+      </div>
+      <div class="themes" id="themes"></div>
+    </div>
+    <div class="card">
+      <p class="label">Número de perguntas</p>
+      <div class="seg" id="count">
+        <button class="btn" type="button" data-n="10">10</button>
+        <button class="btn" type="button" data-n="15" aria-pressed="true">15</button>
+        <button class="btn" type="button" data-n="20">20</button>
+        <button class="btn" type="button" data-n="30">30</button>
+      </div>
+    </div>
+    <div class="card">
+      <p class="label">Tempo pra responder</p>
+      <div class="seg" id="timer">
+        <button class="btn" type="button" data-t="20">20s</button>
+        <button class="btn" type="button" data-t="30" aria-pressed="true">30s</button>
+        <button class="btn" type="button" data-t="45">45s</button>
+        <button class="btn" type="button" data-t="60">60s</button>
+      </div>
+    </div>
+    <button class="btn primary" id="btnStart" type="button" disabled>Começar</button>
+    <p class="lead" id="lobbyMsg" hidden></p>
+  </div>
+</section>
+
+<section id="hostGame" hidden>
+  <div class="stack" style="gap:14px">
+    <div class="topbar">
+      <div class="turn" id="hqNum"></div>
+      <button class="btn ghost" id="btnBackLobby" type="button" style="padding:6px 10px;font-size:15px">Sala</button>
+    </div>
+    <div class="card">
+      <div class="topbar"><span class="qtheme" id="hqTheme"></span><span class="clock" id="hClock"></span></div>
+      <div class="progress tbar"><i id="htbar"></i></div>
+      <p class="question" id="hqText"></p>
+      <p class="correct">Resposta: <span id="hCorrect"></span></p>
+      <button class="btn primary" id="btnPlay" type="button">▶ Play — libera pra todo mundo</button>
+      <button class="btn" id="btnReveal" type="button" hidden>Encerrar o tempo agora</button>
+      <p class="feedback" id="hFeedback" hidden></p>
+      <p class="label" id="hAnswersLabel">Respostas</p>
+      <div class="answers" id="hAnswers"></div>
+      <button class="btn primary" id="btnNext" type="button" hidden>Próxima pergunta</button>
+    </div>
+  </div>
+</section>
+
+<section id="hostEnd" hidden>
+  <div class="stack">
+    <div><p class="label">Fim de jogo</p><h1 id="hWinner"></h1></div>
+    <div class="card rank"><ol id="hRank"></ol></div>
+    <button class="btn primary" id="btnAgain" type="button">Voltar pra sala e jogar de novo</button>
+  </div>
+</section>
+
+<section id="playerJoin" hidden>
+  <div class="stack">
+    <div><p class="label">Entrar na sala</p><h1>Qual o código?</h1></div>
+    <div class="card">
+      <input class="big" type="text" id="inCode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD">
+      <button class="btn primary" id="btnEnter" type="button">Entrar</button>
+      <p class="lead" id="joinMsg" hidden></p>
+      <p class="small">O host vai te dar um personagem da turma. Sem digitar nome.</p>
+    </div>
+  </div>
+</section>
+
+<section id="playerWait" hidden>
+  <div class="stack">
+    <div>
+      <p class="label">Sala <span id="pRoom"></span></p>
+      <p class="teamname" id="pTeamName" hidden></p>
+      <h1 id="waitTitle"></h1>
+      <p class="lead" id="waitText"></p>
+    </div>
+    <div class="card"><p class="label">Quem tá na sala</p><div class="scores" id="pTeams"></div></div>
+    <div class="scores" id="pScores"></div>
+    <button class="btn ghost" id="btnLeave" type="button">Sair</button>
+  </div>
+</section>
+
+<section id="playerGame" hidden>
+  <div class="stack" style="gap:14px">
+    <div class="topbar"><div class="turn" id="pqNum"></div><span class="clock" id="pClock"></span></div>
+    <div class="progress tbar"><i id="ptbar"></i></div>
+    <div class="card">
+      <span class="qtheme" id="pqTheme"></span>
+      <p class="question" id="pqText"></p>
+      <textarea id="pAnswer" placeholder="Escreve a resposta da equipe aqui" rows="2"></textarea>
+      <button class="btn primary" id="btnSend" type="button">Enviar resposta</button>
+      <p class="small" id="pSent"></p>
+      <p class="feedback" id="pFeedback" hidden></p>
+    </div>
+  </div>
+</section>
+
+<section id="playerEnd" hidden>
+  <div class="stack">
+    <div><p class="label">Fim de jogo</p><h1 id="pWinner"></h1></div>
+    <div class="card rank"><ol id="pRank"></ol></div>
+  </div>
+</section>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="scene.js"></script>
+<script src="bank.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
