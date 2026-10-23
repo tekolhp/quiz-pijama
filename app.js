@@ -312,7 +312,7 @@ $("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[];
 $("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
 // ======================= PLAYER =======================
-const player = { id: load("quiz.pid") || Math.random().toString(36).slice(2,10), code:null, me:null, idx:-1, sent:null, open:false, secs:30 };
+const player = { id: load("quiz.pid") || Math.random().toString(36).slice(2,10), code:null, me:null, idx:-1, sent:null, open:false, secs:30, shownIdx:-1 };
 store("quiz.pid", player.id);
 
 $("#btnJoin").addEventListener("click", ()=>{ $("#inCode").value=(params.get("sala")||"").toUpperCase(); show("playerJoin"); $("#inCode").focus(); });
@@ -325,7 +325,7 @@ $("#btnEnter").addEventListener("click", async ()=>{
   $("#btnEnter").disabled=true; $("#btnEnter").textContent="Conectando…";
   try{ await openPlayer(code, {
     teams: p => applyTeams(p.teams),
-    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores(p.scores); show("playerWait"); },
+    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores(p.scores); show("playerWait"); },
     question: p => { if(p.teams) applyTeams(p.teams); if(player.me?.ok) playerQuestion(p); },
     tick: p => { if(p.idx!==player.idx) return; setPlayerClock(p.left, true); },
     reveal: p => playerReveal(p),
@@ -368,8 +368,8 @@ function setPlayerClock(left, running){
   $("#ptbar").style.width = (running? left/Math.max(1,player.secs)*100 : 100)+"%"; $("#ptbar").classList.toggle("warn",warn);
 }
 function playerQuestion(p){
-  const fresh = p.idx!==player.idx;
-  player.idx=p.idx; player.secs=p.secs; player.open=true;
+  const fresh = p.idx!==player.shownIdx;
+  player.idx=p.idx; player.shownIdx=p.idx; player.secs=p.secs; player.open=true;
   if(fresh){ player.sent=null; $("#pAnswer").value=""; }
   $("#pqNum").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#pqTheme").textContent=p.theme; $("#pqText").textContent=p.text;
   $("#pFeedback").hidden=true; $("#pAnswer").disabled=false; $("#btnSend").disabled=false;
