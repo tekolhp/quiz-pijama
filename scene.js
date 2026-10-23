@@ -95,9 +95,19 @@ const WRONG_JOKES = ["errou! hahaha","vai dormir, vai","até eu sabia essa","eit
 const RIGHT_JOKES = ["acertou!","boa!","gênio!","mandou bem","uhul!","é assim que faz"];
 
 const cv = document.getElementById("sea"), ctx = cv.getContext("2d");
-const W = cv.width, H = cv.height, S = 4; // pixel scale (sprite 12px -> 48px)
+let W = cv.width; const H = cv.height, S = 4; // pixel scale (sprite 12px -> 48px)
 const FLOOR = H - 10;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Full-width world: keep the pixel size constant and widen the world instead of stretching it.
+function fitScene(){
+  const box = cv.parentElement; const px = box.clientWidth || 320;
+  const targetH = Math.max(110, Math.min(220, Math.round(px*0.28)));   // display height in px
+  const zoom = targetH / H;                                            // css px per world px
+  W = Math.max(320, Math.ceil(px / zoom));
+  cv.width = W; cv.style.height = targetH+"px"; cv.style.width = "100%";
+  actors.forEach(a=>{ a.x = Math.min(a.x, W-12*S-2); });
+}
+window.addEventListener("resize", fitScene);
 
 function drawSprite(name, x, y, flip){
   const g = SPR[name];
@@ -124,6 +134,8 @@ function mkActor(name, x){
     state:"walk", t:0, say:null, sayT:0, bob:Math.random()*10 };
 }
 ["octo","puffer","horse","jelly","crab"].forEach((n,i)=>actors.push(mkActor(n, 30+i*58)));
+fitScene();
+actors.forEach((a,i)=>{ a.x = Math.round((i+0.5)*(W/5)) - 6*S; });
 let ghost = null, fx = [], bubbles = [];
 for(let i=0;i<14;i++) bubbles.push({x:Math.random()*W, y:Math.random()*H, r:1+Math.random()*2, v:.1+Math.random()*.25});
 
@@ -157,7 +169,7 @@ function frame(now){
   ctx.fillStyle="#0e2552"; for(let i=0;i<W;i+=16) ctx.fillRect(i, 10+Math.sin(now/600+i/30)*2, 8, 2);
   // sand + seaweed
   ctx.fillStyle="#d9b86a"; ctx.fillRect(0,FLOOR,W,H-FLOOR); ctx.fillStyle="#b89650"; for(let i=0;i<W;i+=12) ctx.fillRect(i,FLOOR+4,4,2);
-  ctx.fillStyle="#2e9e5c"; [40,150,250].forEach((sx,i)=>{ for(let k=0;k<5;k++) ctx.fillRect(sx+Math.sin(now/400+k+i)*3, FLOOR-6-k*6, 4, 6); });
+  ctx.fillStyle="#2e9e5c"; [0.12,0.47,0.8,0.95,0.3,0.62].slice(0, Math.max(3, Math.round(W/110))).map(f=>Math.round(f*W)).forEach((sx,i)=>{ for(let k=0;k<5;k++) ctx.fillRect(sx+Math.sin(now/400+k+i)*3, FLOOR-6-k*6, 4, 6); });
   // bubbles
   bubbles.forEach(b=>{ b.y -= b.v*dt; if(b.y<-4){ b.y=H; b.x=Math.random()*W; } ctx.fillStyle="rgba(170,220,255,.5)"; ctx.fillRect(Math.round(b.x), Math.round(b.y), b.r*2, b.r*2); });
   // actors
@@ -173,7 +185,7 @@ function frame(now){
   });
   // ghost (sheet guy) sometimes zooms by
   if(!ghost && Math.random()<.0007*dt && !reduce){ ghost={x:-60, t:0}; }
-  if(ghost){ ghost.x += 2.2*dt; ghost.t+=dt; drawSprite("ghost", ghost.x, 8+Math.sin(ghost.t/8)*6, false); bubbleText("BUUU!", ghost.x+24, 6); if(ghost.x>W+20) ghost=null; }
+  if(ghost){ ghost.x += Math.max(2.2, W/150)*dt; ghost.t+=dt; drawSprite("ghost", ghost.x, 8+Math.sin(ghost.t/8)*6, false); bubbleText("BUUU!", ghost.x+24, 6); if(ghost.x>W+20) ghost=null; }
   // fx (confetti / sweat)
   fx = fx.filter(f=>(f.life-=dt)>0);
   fx.forEach(f=>{ f.x+=f.vx*dt; f.y+=f.vy*dt; f.vy+=.05*dt; ctx.fillStyle=f.c; ctx.fillRect(Math.round(f.x),Math.round(f.y),3,3); });
