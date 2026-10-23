@@ -220,7 +220,21 @@ function loadQuestionView(){
 }
 function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:host.left, teams:host.teams }; }
 const norm = t => String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
-function autoOk(answer, correct){ const a=norm(answer), c=norm(correct); if(!a) return false; if(a===c) return true; const aw=a.split(" ").filter(w=>w.length>2), cw=c.split(" ").filter(w=>w.length>2); return cw.length>0 && aw.length>0 && aw.every(w=>cw.includes(w)); }
+function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=Array.from({length:n+1},(_,j)=>j); for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; }
+function close(a,c){ if(a===c) return true; const tol = c.length<=4 ? 0 : c.length<=7 ? 1 : 2; return lev(a,c)<=tol; }
+// Accepts: exact match, small typos (Madrid/Madri, Himalaya), the answer contained in a longer reply ("é Madri"),
+// every significant word of the reply appearing in the answer ("Deodoro" for "Deodoro da Fonseca"), and listed alternatives.
+function autoOk(answer, correct, alts){
+  const a=norm(answer); if(!a) return false;
+  const targets=[correct, ...(alts||[])].map(norm).filter(Boolean);
+  for(const c of targets){
+    if(close(a,c)) return true;
+    if(c.length>=4 && a.includes(c)) return true;
+    const aw=a.split(" ").filter(w=>w.length>2), cw=c.split(" ").filter(w=>w.length>2);
+    if(cw.length && aw.length && aw.every(w=>cw.some(x=>close(w,x)))) return true;
+  }
+  return false;
+}
 function sendCurrentState(){
   if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length, scores:scoreList() });
   else if(host.phase==="question") send("question", questionPayload());
@@ -265,7 +279,7 @@ function reveal(){
   if(host.phase!=="question") return;
   stopTimer(); host.phase="reveal";
   const it=host.deck[host.idx];
-  playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct); });
+  playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct, it.q.slice(2)); });
   host.marks = {...host.marks};
   const anyOk=Object.values(host.marks).some(Boolean);
   revealView(); sceneReact(anyOk);
