@@ -61,9 +61,21 @@ async function openPlayer(code, h){
     const t = setTimeout(()=>rej(new Error("timeout")), 12000);
     c.on("open", ()=>{ clearTimeout(t); hostConn=c; res(); });
     c.on("data", d=>{ if(d && d.ev) dispatch(d.ev, d.payload); });
-    c.on("close", ()=>{ hostConn=null; $("#waitTitle").textContent="Conexão caiu"; $("#waitText").textContent="Toca em Sair e entra de novo com o código."; show("playerWait"); });
+    c.on("close", ()=>{ hostConn=null; reconnectLoop(code); });
     peer.on("error", e=>{ clearTimeout(t); rej(e); });
   });
+}
+let reconnecting=false;
+async function reconnectLoop(code){
+  if(reconnecting || !player.code) return; reconnecting=true;
+  $("#waitTitle").textContent="Reconectando…"; $("#waitText").textContent="O host recarregou ou a rede oscilou. Segura aí."; show("playerWait");
+  const until=Date.now()+90e3;
+  while(Date.now()<until && player.code){
+    try{ await openPlayer(code, handlers); send("join",{ id:player.id }); reconnecting=false; return; }catch(e){}
+    await new Promise(r=>setTimeout(r,3000));
+  }
+  reconnecting=false;
+  $("#waitTitle").textContent="Não deu pra reconectar"; $("#waitText").textContent="Pede pro host retomar a sala e toca em Sair pra entrar de novo.";
 }
 function send(ev, payload){
   const m={ev,payload};
@@ -76,8 +88,18 @@ const params = new URLSearchParams(location.search);
 const host = { code:null, teams:{}, themes:[], count:15, secs:30, deck:[], idx:0, answers:{}, timer:null, left:0, phase:"lobby" };
 const playing = () => Object.entries(host.teams).filter(([,t])=>t.ok);
 
-$("#btnHost").addEventListener("click", async ()=>{
-  host.code = roomCode();
+const HOST_KEY="quiz.host";
+function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, deck:host.deck, idx:host.idx, answers:host.answers, marks:host.marks, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
+function clearHost(){ store(HOST_KEY, undefined); }
+const savedHost = load(HOST_KEY);
+if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
+  const b=$("#btnResume"); b.hidden=false; b.textContent="Retomar sala "+savedHost.code;
+}
+$("#btnResume").addEventListener("click", ()=>startHost(savedHost));
+$("#btnHost").addEventListener("click", ()=>startHost(null));
+async function startHost(saved){
+  if(saved){ Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
+  else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
   try{ await openHost(host.code, {
     join: p => {
@@ -94,7 +116,7 @@ $("#btnHost").addEventListener("click", async ()=>{
       if(host.phase!=="question" || p.idx!==host.idx || !host.teams[p.id]?.ok) return;
       const first = host.answers[p.id]==null;
       host.answers[p.id] = String(p.text||"").slice(0,80);
-      renderHostAnswers();
+      renderHostAnswers(); saveHost();
       if(first) makeSay(pick(actors), host.teams[p.id].name+" respondeu!", 100);
     },
   });
@@ -103,9 +125,16 @@ $("#btnHost").addEventListener("click", async ()=>{
   $("#roomCode").textContent = host.code;
   $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
   renderThemes(); renderTeamList();
-  show("hostLobby");
-});
-function broadcastTeams(){ send("teams", { teams: host.teams }); renderTeamList(); }
+  $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
+  $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
+  if(saved && host.deck.length && host.phase!=="lobby"){
+    if(host.phase==="end") hostEnd();
+    else if(host.phase==="reveal"){ show("hostGame"); loadQuestionView(); host.phase="reveal"; revealView(); }
+    else { show("hostGame"); loadQuestion(); }
+  } else show("hostLobby");
+  saveHost();
+}
+function broadcastTeams(){ send("teams", { teams: host.teams }); renderTeamList(); saveHost(); }
 function renderTeamList(){
   const box=$("#teamList"); box.innerHTML="";
   const ids=Object.keys(host.teams);
@@ -124,13 +153,13 @@ function renderThemes(){
   Object.keys(BANK).forEach((t,i)=>{
     const lab = el("label","theme");
     const cb = el("input"); cb.type="checkbox"; cb.id="theme-"+i; cb.value=t; cb.checked = host.themes.includes(t);
-    cb.addEventListener("change", ()=>{ host.themes = [...box.querySelectorAll("input:checked")].map(x=>x.value); });
+    cb.addEventListener("change", ()=>{ host.themes = [...box.querySelectorAll("input:checked")].map(x=>x.value); saveHost(); });
     lab.append(cb, document.createTextNode(t), el("span","n",BANK[t].length)); box.append(lab);
   });
 }
 $("#mixAll").addEventListener("click", ()=>{ const all=Object.keys(BANK); host.themes = host.themes.length===all.length ? [] : all.slice(); renderThemes(); });
-$("#count").addEventListener("click", e=>{ const b=e.target.closest("button[data-n]"); if(!b) return; host.count=+b.dataset.n; $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
-$("#timer").addEventListener("click", e=>{ const b=e.target.closest("button[data-t]"); if(!b) return; host.secs=+b.dataset.t; $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+$("#count").addEventListener("click", e=>{ const b=e.target.closest("button[data-n]"); if(!b) return; host.count=+b.dataset.n; saveHost(); $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+$("#timer").addEventListener("click", e=>{ const b=e.target.closest("button[data-t]"); if(!b) return; host.secs=+b.dataset.t; saveHost(); $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
 $("#copyUrl").addEventListener("click", async ()=>{
   const t=$("#joinUrl").textContent;
   try{ await navigator.clipboard.writeText(t); $("#copyUrl").textContent="Copiado!"; }catch(e){ const r=document.createRange(); r.selectNodeContents($("#joinUrl")); getSelection().removeAllRanges(); getSelection().addRange(r); }
@@ -148,16 +177,19 @@ $("#btnStart").addEventListener("click", ()=>{
 });
 
 function loadQuestion(){
-  const item=host.deck[host.idx]; const [text,correct,...wrong]=item.q;
-  item.correct=correct; host.marks={};
-  host.answers={}; host.phase="ready"; stopTimer(); host.left=host.secs;
+  host.marks={}; host.answers={}; host.phase="ready"; stopTimer(); host.left=host.secs;
+  loadQuestionView();
+  send("ready", { idx:host.idx, total:host.deck.length, scores:scoreList() });
+  saveHost();
+}
+function loadQuestionView(){
+  const item=host.deck[host.idx]; const [text,correct]=item.q; item.correct=correct;
   $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · só você vê. Dá play quando quiser.`;
   $("#hqTheme").textContent=item.theme; $("#hqText").textContent=text;
   $("#hCorrect").textContent = correct;
   $("#hClock").textContent=host.secs+"s"; $("#hClock").classList.remove("warn"); $("#htbar").style.width="100%"; $("#htbar").classList.remove("warn");
   $("#btnPlay").hidden=false; $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
   renderHostAnswers();
-  send("ready", { idx:host.idx, total:host.deck.length, scores:scoreList() });
 }
 function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:host.left, teams:host.teams }; }
 const norm = t => String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
@@ -189,7 +221,7 @@ function renderHostAnswers(){
   const revealing = host.phase==="reveal";
   playing().forEach(([id,t])=>{
     const row=el(revealing?"button":"div","arow"+(revealing?" btn":"")+(revealing && host.marks[id]?" hit":"")); row.style.setProperty("--team",t.color);
-    if(revealing){ row.type="button"; row.addEventListener("click", ()=>{ host.marks[id]=!host.marks[id]; renderHostAnswers(); }); }
+    if(revealing){ row.type="button"; row.addEventListener("click", ()=>{ host.marks[id]=!host.marks[id]; renderHostAnswers(); saveHost(); }); }
     const a=host.answers[id];
     row.append(el("i","dot"), el("b",null,t.name), el("span","ans", a==null ? (revealing?"— não respondeu":"… pensando") : a), el("em",null,t.score+(revealing?(host.marks[id]?" +1":""):"")));
     box.append(row);
@@ -207,31 +239,36 @@ function reveal(){
   stopTimer(); host.phase="reveal";
   const it=host.deck[host.idx];
   playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct); });
+  host.marks = {...host.marks};
   const anyOk=Object.values(host.marks).some(Boolean);
+  revealView(); sceneReact(anyOk);
+  send("reveal", revealPayload()); saveHost();
+}
+function revealView(){
   const f=$("#hFeedback"); f.hidden=false; f.className="feedback ok"; f.textContent="Tempo encerrado. Confere as respostas e vai pra próxima.";
-  $("#btnReveal").hidden=true; $("#btnNext").hidden=false;
+  $("#btnPlay").hidden=true; $("#btnReveal").hidden=true; $("#btnNext").hidden=false;
   $("#btnNext").textContent = host.idx+1>=host.deck.length ? "Fechar e ver resultado" : "Pontuar e ir pra próxima";
-  renderHostAnswers(); sceneReact(anyOk);
-  send("reveal", revealPayload());
+  $("#hClock").textContent="TEMPO!"; $("#htbar").style.width="0%";
+  renderHostAnswers();
 }
 $("#btnReveal").addEventListener("click", ()=>{ host.left=0; tick(); });
 $("#btnNext").addEventListener("click", ()=>{
   playing().forEach(([id,t])=>{ if(host.marks[id]) t.score++; });
-  send("reveal", revealPayload());
+  send("reveal", revealPayload()); saveHost();
   host.idx++; if(host.idx>=host.deck.length) return hostEnd(); loadQuestion();
 });
 function hostEnd(){
   host.phase="end"; const list=scoreList();
   renderRank($("#hRank"), list); $("#hWinner").textContent=winnerText(list);
-  show("hostEnd"); sceneReact(true); send("end",{ scores:list });
+  show("hostEnd"); sceneReact(true); send("end",{ scores:list }); saveHost();
 }
 function winnerText(list){ if(!list.length) return "Ninguém jogou"; const top=list[0].score; const w=list.filter(x=>x.score===top).map(x=>x.team); return w.length>1 ? "Empate: "+w.join(" e ") : w[0]+" venceu!"; }
 function renderRank(ol, list){
   ol.innerHTML="";
   list.forEach((x,i)=>{ const li=el("li"); li.style.setProperty("--team",x.color); li.append(el("span","pos",(i+1)+"º"), el("i","dot"), el("span",null,x.team), el("span","pts",x.score+" pts")); ol.append(li); });
 }
-$("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
-$("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; send("lobby",{}); renderTeamList(); show("hostLobby"); });
+$("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
+$("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
 // ======================= PLAYER =======================
 const player = { id: load("quiz.pid") || Math.random().toString(36).slice(2,10), code:null, me:null, idx:-1, sent:null, open:false, secs:30 };
@@ -320,4 +357,4 @@ function playerReveal(p){
   setPlayerClock(0,false); $("#pClock").textContent="tempo encerrado";
   renderPlayerScores(p.scores);
 }
-$("#btnLeave").addEventListener("click", ()=>{ if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; show("home"); });
+$("#btnLeave").addEventListener("click", ()=>{ if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; player.code=null; show("home"); });
