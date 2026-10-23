@@ -142,6 +142,15 @@ textarea:focus-visible{outline:3px solid var(--accent)}
         <button class="btn ghost" id="mixAll" type="button" style="padding:6px 10px;font-size:15px">Misturar tudo</button>
       </div>
       <div class="themes" id="themes"></div>
+      <p class="small">O jogo sorteia o número de perguntas escolhido abaixo entre os temas marcados.</p>
+    </div>
+    <div class="card">
+      <div class="topbar"><p class="label">Perguntas da família</p><span class="small" id="customCount"></span></div>
+      <p class="small">Cria as tuas. Ficam salvas neste aparelho e viram o tema "Perguntas da família".</p>
+      <input type="text" id="customQ" placeholder="Pergunta" maxlength="160">
+      <input type="text" id="customA" placeholder="Resposta certa" maxlength="80">
+      <button class="btn" id="addCustom" type="button">+ adicionar pergunta</button>
+      <div class="answers" id="customList"></div>
     </div>
     <div class="card">
       <p class="label">Número de perguntas</p>

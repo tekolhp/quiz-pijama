@@ -1,403 +1,252 @@
-// Question bank: [question, correct answer] (free-text answers; host confirms)
+// Question bank: [question, correct answer]. Free-text answers; the host confirms matches.
 const BANK = {
- "Geografia": [
-  [
-   "Qual é o maior país da América do Sul?",
-   "Brasil"
+  "Geografia": [
+    ["Qual é o maior país da América do Sul?","Brasil"],
+    ["Qual rio corta a cidade de Londres?","Tâmisa"],
+    ["Qual é a capital da Austrália?","Camberra"],
+    ["Qual é o maior deserto quente do mundo?","Saara"],
+    ["Qual estado brasileiro faz fronteira com o maior número de outros estados?","Bahia"],
+    ["O Monte Everest fica em qual cordilheira?","Himalaia"],
+    ["Qual é o menor país do mundo?","Vaticano"],
+    ["Qual oceano banha o litoral brasileiro?","Atlântico"],
+    ["Qual é a capital do Canadá?","Ottawa"],
+    ["Em qual continente fica o Egito?","África"],
+    ["Qual é o rio mais extenso do Brasil?","Amazonas"],
+    ["Qual país tem o formato de uma bota?","Itália"],
+    ["Qual é a capital do Japão?","Tóquio"],
+    ["Qual é a capital da Argentina?","Buenos Aires"],
+    ["Qual é o maior oceano do mundo?","Pacífico"],
+    ["Em qual país fica a Torre Eiffel?","França"],
+    ["Qual é a capital de Portugal?","Lisboa"],
+    ["Qual é o maior continente?","Ásia"],
+    ["Em qual país fica a Grande Muralha?","China"],
+    ["Qual é a capital dos Estados Unidos?","Washington"],
+    ["Qual país tem a maior população do mundo?","Índia"],
+    ["Qual é a capital do Chile?","Santiago"],
+    ["Em qual continente fica a Austrália?","Oceania"],
+    ["Qual é a capital da Espanha?","Madri"],
+    ["Qual é o ponto mais alto do Brasil?","Pico da Neblina"],
+    ["Qual é a capital do Egito?","Cairo"],
+    ["Quantos continentes existem?","6"],
+    ["Qual país é conhecido como a terra do sol nascente?","Japão"],
+    ["Qual é a capital do México?","Cidade do México"],
+    ["Qual é a maior ilha do mundo?","Groenlândia"],
+  ],
+  "História": [
+    ["Em que ano o Brasil declarou independência?","1822"],
+    ["Quem foi o primeiro presidente do Brasil?","Deodoro da Fonseca"],
+    ["Em que ano terminou a Segunda Guerra Mundial?","1945"],
+    ["Quem assinou a Lei Áurea?","Princesa Isabel"],
+    ["Qual civilização construiu as pirâmides de Gizé?","Egípcia"],
+    ["Em que ano o homem pisou na Lua pela primeira vez?","1969"],
+    ["Qual foi a capital do Brasil antes de Brasília?","Rio de Janeiro"],
+    ["Quem descobriu a penicilina?","Alexander Fleming"],
+    ["Em que ano caiu o Muro de Berlim?","1989"],
+    ["Qual navegador chegou ao Brasil em 1500?","Pedro Álvares Cabral"],
+    ["Qual império tinha Roma como capital?","Império Romano"],
+    ["Quem foi o presidente que fundou Brasília?","Juscelino Kubitschek"],
+    ["Em que ano foi proclamada a República no Brasil?","1889"],
+    ["Quem foi o imperador do Brasil por mais tempo?","Dom Pedro II"],
+    ["Em que ano começou a Primeira Guerra Mundial?","1914"],
+    ["Quem pintou a Mona Lisa?","Leonardo da Vinci"],
+    ["Em que ano Cristóvão Colombo chegou à América?","1492"],
+    ["Quem foi o líder da Inconfidência Mineira?","Tiradentes"],
+    ["Qual era o nome do Brasil quando foi descoberto?","Ilha de Vera Cruz"],
+    ["Quem foi a primeira mulher presidente do Brasil?","Dilma Rousseff"],
+    ["Em que ano o Titanic afundou?","1912"],
+    ["Quem inventou a lâmpada elétrica?","Thomas Edison"],
+    ["Qual foi a primeira capital do Brasil?","Salvador"],
+    ["Quem foi o primeiro homem a ir ao espaço?","Yuri Gagarin"],
+    ["Em que ano Brasília foi inaugurada?","1960"],
+    ["Quem comandou a Revolução de 1930 no Brasil?","Getúlio Vargas"],
+    ["Que povo construiu Machu Picchu?","Incas"],
+    ["Em que ano terminou a ditadura militar no Brasil?","1985"],
+    ["Quem foi o primeiro presidente eleito pelo voto direto após a ditadura?","Fernando Collor"],
+    ["Em que século o Brasil foi descoberto?","16"],
+  ],
+  "Ciência": [
+    ["Qual é o planeta mais próximo do Sol?","Mercúrio"],
+    ["Qual é a fórmula química da água?","H2O"],
+    ["Quantos ossos tem o corpo humano adulto?","206"],
+    ["Qual gás as plantas absorvem na fotossíntese?","Gás carbônico"],
+    ["Qual é o maior planeta do Sistema Solar?","Júpiter"],
+    ["Qual órgão bombeia o sangue pelo corpo?","Coração"],
+    ["Qual metal é líquido em temperatura ambiente?","Mercúrio"],
+    ["Quantos planetas tem o Sistema Solar?","8"],
+    ["Qual é o animal mais rápido em terra?","Guepardo"],
+    ["Qual é o símbolo químico do ouro?","Au"],
+    ["A que temperatura a água ferve ao nível do mar, em graus?","100"],
+    ["Quantos dentes tem um adulto, normalmente?","32"],
+    ["Qual é o maior órgão do corpo humano?","Pele"],
+    ["Qual planeta é conhecido como planeta vermelho?","Marte"],
+    ["Qual é o gás mais abundante no ar?","Nitrogênio"],
+    ["Quantos cromossomos tem o ser humano?","46"],
+    ["Qual é a estrela mais próxima da Terra?","Sol"],
+    ["Qual é o símbolo químico da prata?","Ag"],
+    ["A que temperatura a água congela, em graus?","0"],
+    ["Qual é o planeta com anéis mais famosos?","Saturno"],
+    ["Qual é o osso mais longo do corpo humano?","Fêmur"],
+    ["Quantas pernas tem um inseto?","6"],
+    ["Qual parte da planta faz a fotossíntese?","Folha"],
+    ["Qual é o satélite natural da Terra?","Lua"],
+    ["Quantos litros de sangue tem um adulto, aproximadamente?","5"],
+    ["Qual cientista criou a teoria da relatividade?","Albert Einstein"],
+    ["Qual é o metal mais leve?","Lítio"],
+    ["Qual é a unidade de medida da força?","Newton"],
+    ["Qual é o processo de transformação da água em vapor?","Evaporação"],
+    ["Quantos segundos tem uma hora?","3600"],
+  ],
+  "Esportes": [
+    ["Quantos jogadores um time de futebol tem em campo?","11"],
+    ["Quantas Copas do Mundo o Brasil venceu?","5"],
+    ["Em qual esporte se usa uma peteca?","Badminton"],
+    ["Em que país surgiram os Jogos Olímpicos?","Grécia"],
+    ["Qual seleção venceu a Copa do Mundo de 2002?","Brasil"],
+    ["Quantos sets precisa vencer para ganhar um jogo de vôlei?","3"],
+    ["Qual cidade sediou as Olimpíadas de 2016?","Rio de Janeiro"],
+    ["Em qual esporte Ayrton Senna foi campeão?","Fórmula 1"],
+    ["Quantos minutos tem um jogo de futebol, tempo normal?","90"],
+    ["Qual é o esporte nacional do Japão?","Sumô"],
+    ["Em qual esporte existe o termo 'strike'?","Boliche"],
+    ["Quantos pontos vale uma cesta de fora da linha de 3 no basquete?","3"],
+    ["Quantos jogadores um time de vôlei tem em quadra?","6"],
+    ["Quantos jogadores um time de basquete tem em quadra?","5"],
+    ["Qual é o único jogador que pode usar as mãos no futebol?","Goleiro"],
+    ["De quantos em quantos anos acontece a Copa do Mundo?","4"],
+    ["Qual país venceu a Copa do Mundo de 2022?","Argentina"],
+    ["Qual jogador brasileiro é conhecido como 'Rei do Futebol'?","Pelé"],
+    ["Em qual esporte se usa raquete e uma bolinha amarela?","Tênis"],
+    ["Qual é a distância de uma maratona, em km?","42"],
+    ["Quantas voltas tem a pista de atletismo na prova de 400 metros?","1"],
+    ["Qual esporte é jogado em uma piscina com bola e gols?","Polo aquático"],
+    ["Qual cidade sediou as Olimpíadas de 2024?","Paris"],
+    ["Qual time brasileiro tem mais títulos da Libertadores?","Palmeiras"],
+    ["Quantos jogadores tem um time de futsal em quadra?","5"],
+    ["Qual é o esporte de Rebeca Andrade?","Ginástica artística"],
+    ["Qual seleção venceu a Copa do Mundo de 2014?","Alemanha"],
+    ["Quantos árbitros ficam dentro do campo em um jogo de futebol?","1"],
+    ["Qual esporte usa taco e bola num campo com buracos?","Golfe"],
+    ["Qual país é o maior campeão de Copas do Mundo de futebol?","Brasil"],
+  ],
+  "Música": [
+    ["Quantas cordas tem um violão comum?","6"],
+    ["Qual gênero musical nasceu no Rio de Janeiro no fim dos anos 50?","Bossa nova"],
+    ["Quantas notas musicais existem na escala básica (dó, ré, mi…)?","7"],
+    ["Qual instrumento tem teclas pretas e brancas?","Piano"],
+    ["Qual estado é o berço do forró?","Pernambuco"],
+    ["Qual instrumento de cordas é tocado com arco e apoiado no ombro?","Violino"],
+    ["Qual cidade é conhecida como a capital do samba?","Rio de Janeiro"],
+    ["O que significa cantar 'a cappella'?","Cantar sem instrumentos"],
+    ["Qual gênero musical é a marca de Salvador no Carnaval?","Axé"],
+    ["Quantos integrantes tem um quarteto?","4"],
+    ["Qual instrumento marca o ritmo numa roda de samba e tem platinelas?","Pandeiro"],
+    ["Qual instrumento de fole é a cara do forró?","Sanfona"],
+    ["Quantas cordas tem um cavaquinho?","4"],
+    ["Qual gênero musical nasceu em Minas Gerais e tem viola caipira?","Sertanejo"],
+    ["Quem é conhecido como 'Rei' da música brasileira?","Roberto Carlos"],
+    ["Qual instrumento tem 88 teclas?","Piano"],
+    ["Qual é o instrumento de percussão com pele em dois lados e tocado com baquetas?","Tambor"],
+    ["Quantos integrantes tem um trio?","3"],
+    ["Qual gênero musical é tocado com berimbau?","Capoeira"],
+    ["Qual é o nome da pessoa que rege uma orquestra?","Maestro"],
+    ["Qual cantora é conhecida como a 'Rainha do Rock' brasileiro?","Rita Lee"],
+    ["Qual instrumento de sopro é feito de metal e tem pistões?","Trompete"],
+    ["Qual gênero musical nasceu na Jamaica?","Reggae"],
+    ["Quem compôs 'Garota de Ipanema'?","Tom Jobim"],
+    ["Qual instrumento de cordas é grande e tocado em pé, com arco ou dedilhado?","Contrabaixo"],
+    ["Qual gênero musical nasceu nos Estados Unidos e tem improviso como marca?","Jazz"],
+    ["Qual é o instrumento principal do rock?","Guitarra"],
+    ["Qual grupo de percussão abre o desfile de uma escola de samba?","Bateria"],
+    ["Qual é o nome do pequeno instrumento de sopro usado por árbitros e em bandinhas?","Apito"],
+  ],
+  "Brasil": [
+    ["Qual é o estado mais populoso do Brasil?","São Paulo"],
+    ["Quantos estados tem o Brasil?","26"],
+    ["Qual é a capital do Rio Grande do Sul?","Porto Alegre"],
+    ["Qual bioma cobre a maior parte do Nordeste?","Caatinga"],
+    ["Qual é o prato típico do Brasil feito com feijão preto e carnes?","Feijoada"],
+    ["Qual cidade é conhecida como a 'Veneza Brasileira'?","Recife"],
+    ["Em qual estado fica a maior parte do Pantanal?","Mato Grosso do Sul"],
+    ["Qual é a moeda do Brasil?","Real"],
+    ["Qual cidade é a capital de Minas Gerais?","Belo Horizonte"],
+    ["Qual é a festa típica de junho no Nordeste?","Festa junina"],
+    ["Qual estado tem Florianópolis como capital?","Santa Catarina"],
+    ["Qual é a capital do Brasil?","Brasília"],
+    ["Qual é o maior estado do Brasil em área?","Amazonas"],
+    ["Qual é o menor estado do Brasil?","Sergipe"],
+    ["Qual é a capital da Bahia?","Salvador"],
+    ["Qual é a capital do Ceará?","Fortaleza"],
+    ["Qual é a capital do Paraná?","Curitiba"],
+    ["Qual é a capital do Amazonas?","Manaus"],
+    ["Qual é a capital de Pernambuco?","Recife"],
+    ["Qual é a capital do Pará?","Belém"],
+    ["Qual é a capital de Goiás?","Goiânia"],
+    ["Quantas cores tem a bandeira do Brasil?","4"],
+    ["O que está escrito na bandeira do Brasil?","Ordem e Progresso"],
+    ["Qual é o animal símbolo do Brasil, uma ave?","Sabiá-laranjeira"],
+    ["Qual cidade é conhecida como a Cidade Maravilhosa?","Rio de Janeiro"],
+    ["Qual é a flor símbolo do Brasil?","Ipê-amarelo"],
+    ["Em qual estado fica Papucaia?","Rio de Janeiro"],
+    ["Qual é a capital do Espírito Santo?","Vitória"],
+    ["Qual estado é famoso pelo chimarrão?","Rio Grande do Sul"],
+    ["Qual é a capital de Mato Grosso?","Cuiabá"],
+  ],
+  "Comida": [
+    ["De qual país vem a pizza?","Itália"],
+    ["Qual é o ingrediente principal do guacamole?","Abacate"],
+    ["Qual fruta é usada pra fazer vinho?","Uva"],
+    ["De que é feito o chocolate?","Cacau"],
+    ["Qual prato japonês é feito com arroz e peixe cru?","Sushi"],
+    ["Qual tempero deixa o curry amarelo?","Cúrcuma"],
+    ["Qual é o ingrediente principal do pão de queijo?","Polvilho"],
+    ["Qual é a bebida feita com café e leite vaporizado?","Cappuccino"],
+    ["De qual estado vem o acarajé?","Bahia"],
+    ["Qual fruta é a base da caipirinha tradicional?","Limão"],
+    ["Qual queijo é tradicionalmente usado na pizza?","Mussarela"],
+    ["Qual doce é feito com leite condensado e chocolate em pó?","Brigadeiro"],
+    ["Qual doce é feito com leite condensado e coco?","Beijinho"],
+    ["Qual é o ingrediente principal do pão?","Farinha de trigo"],
+    ["De qual país vem o sushi?","Japão"],
+    ["De qual país vem o taco?","México"],
+    ["Qual é a bebida feita a partir da cana-de-açúcar e usada na caipirinha?","Cachaça"],
+    ["Qual é o doce de festa junina feito de milho e ralado?","Pamonha"],
+    ["Qual fruta é vermelha por fora, branca por dentro e tem sementinhas pretas?","Pitaia"],
+    ["De qual animal vem o leite da mussarela de búfala?","Búfala"],
+    ["Qual é o prato de arroz e feijão com carne seca típico do Nordeste?","Baião de dois"],
+    ["Qual massa italiana é longa e fina como um fio?","Espaguete"],
+    ["Qual é o doce de festa junina feito de amendoim moído?","Paçoca"],
+    ["De qual país vem o croissant?","França"],
+    ["Qual é o ingrediente principal do vatapá?","Pão"],
+    ["Qual é o principal ingrediente do hambúrguer?","Carne moída"],
+  ],
+  "Animais": [
+    ["Qual é o maior animal do planeta?","Baleia-azul"],
+    ["Quantas patas tem uma aranha?","8"],
+    ["Qual animal é conhecido como o 'rei da selva'?","Leão"],
+    ["Qual ave não voa e vive na Antártida?","Pinguim"],
+    ["Qual mamífero consegue voar?","Morcego"],
+    ["Qual é o animal mais alto do mundo?","Girafa"],
+    ["Qual animal muda de cor pra se camuflar?","Camaleão"],
+    ["Quantos corações tem um polvo?","3"],
+    ["Qual é o maior felino do mundo?","Tigre"],
+    ["Qual inseto produz mel?","Abelha"],
+    ["Qual macaquinho dourado é símbolo da Mata Atlântica?","Mico-leão-dourado"],
+    ["Qual é o maior réptil do mundo?","Crocodilo-de-água-salgada"],
+    ["Qual é o maior roedor do mundo?","Capivara"],
+    ["Qual é o maior felino das Américas?","Onça-pintada"],
+    ["Qual animal carrega o filhote numa bolsa?","Canguru"],
+    ["Qual é a maior ave do mundo?","Avestruz"],
+    ["Quantas patas tem um inseto?","6"],
+    ["Qual animal é conhecido por dormir até 20 horas por dia pendurado?","Bicho-preguiça"],
+    ["Qual réptil troca de pele?","Cobra"],
+    ["Qual animal tem a tromba mais longa?","Elefante"],
+    ["Qual ave é símbolo da paz?","Pomba"],
+    ["Qual é o animal que produz seda?","Bicho-da-seda"],
+    ["Qual animal tem listras pretas e brancas e parece um cavalo?","Zebra"],
+    ["Qual peixe sobe o rio pra desovar e é famoso no Alasca?","Salmão"],
+    ["Qual é o mamífero que vive no mar e canta?","Baleia-jubarte"],
+    ["Qual animal tem o pescoço mais comprido?","Girafa"],
+    ["Qual é o menor pássaro do mundo?","Beija-flor"],
+    ["Qual animal vive em colmeias e tem uma rainha?","Abelha"],
   ],
-  [
-   "Qual rio corta a cidade de Londres?",
-   "Tâmisa"
-  ],
-  [
-   "Qual é a capital da Austrália?",
-   "Camberra"
-  ],
-  [
-   "Qual é o maior deserto quente do mundo?",
-   "Saara"
-  ],
-  [
-   "Qual estado brasileiro faz fronteira com o maior número de outros estados?",
-   "Bahia"
-  ],
-  [
-   "O Monte Everest fica em qual cordilheira?",
-   "Himalaia"
-  ],
-  [
-   "Qual é o menor país do mundo?",
-   "Vaticano"
-  ],
-  [
-   "Qual oceano banha o litoral brasileiro?",
-   "Atlântico"
-  ],
-  [
-   "Qual é a capital do Canadá?",
-   "Ottawa"
-  ],
-  [
-   "Em qual continente fica o Egito?",
-   "África"
-  ],
-  [
-   "Qual é o rio mais extenso do Brasil?",
-   "Amazonas"
-  ],
-  [
-   "Qual país tem o formato de uma bota?",
-   "Itália"
-  ]
- ],
- "História": [
-  [
-   "Em que ano o Brasil declarou independência?",
-   "1822"
-  ],
-  [
-   "Quem foi o primeiro presidente do Brasil?",
-   "Deodoro da Fonseca"
-  ],
-  [
-   "Em que ano terminou a Segunda Guerra Mundial?",
-   "1945"
-  ],
-  [
-   "Quem assinou a Lei Áurea?",
-   "Princesa Isabel"
-  ],
-  [
-   "Qual civilização construiu as pirâmides de Gizé?",
-   "Egípcia"
-  ],
-  [
-   "Em que ano o homem pisou na Lua pela primeira vez?",
-   "1969"
-  ],
-  [
-   "Qual foi a capital do Brasil antes de Brasília?",
-   "Rio de Janeiro"
-  ],
-  [
-   "Quem descobriu a penicilina?",
-   "Alexander Fleming"
-  ],
-  [
-   "Em que ano caiu o Muro de Berlim?",
-   "1989"
-  ],
-  [
-   "Qual navegador chegou ao Brasil em 1500?",
-   "Pedro Álvares Cabral"
-  ],
-  [
-   "Qual império tinha Roma como capital?",
-   "Império Romano"
-  ],
-  [
-   "Quem foi o presidente que fundou Brasília?",
-   "Juscelino Kubitschek"
-  ]
- ],
- "Ciência": [
-  [
-   "Qual é o planeta mais próximo do Sol?",
-   "Mercúrio"
-  ],
-  [
-   "Qual é a fórmula química da água?",
-   "H₂O"
-  ],
-  [
-   "Quantos ossos tem o corpo humano adulto?",
-   "206"
-  ],
-  [
-   "Qual gás as plantas absorvem na fotossíntese?",
-   "Gás carbônico"
-  ],
-  [
-   "Qual é o maior planeta do Sistema Solar?",
-   "Júpiter"
-  ],
-  [
-   "Qual órgão bombeia o sangue pelo corpo?",
-   "Coração"
-  ],
-  [
-   "Qual é a velocidade aproximada da luz?",
-   "300 mil km/s"
-  ],
-  [
-   "Qual metal é líquido em temperatura ambiente?",
-   "Mercúrio"
-  ],
-  [
-   "Quantos planetas tem o Sistema Solar?",
-   "8"
-  ],
-  [
-   "Qual é o animal mais rápido em terra?",
-   "Guepardo"
-  ],
-  [
-   "Qual é o símbolo químico do ouro?",
-   "Au"
-  ],
-  [
-   "A que temperatura a água ferve ao nível do mar?",
-   "100 °C"
-  ]
- ],
- "Esportes": [
-  [
-   "Quantos jogadores um time de futebol tem em campo?",
-   "11"
-  ],
-  [
-   "Quantas Copas do Mundo o Brasil venceu?",
-   "5"
-  ],
-  [
-   "Em qual esporte se usa uma peteca?",
-   "Badminton"
-  ],
-  [
-   "Quantos pontos vale uma cesta de fora da linha de 3 no basquete?",
-   "3"
-  ],
-  [
-   "Em que país surgiram os Jogos Olímpicos?",
-   "Grécia"
-  ],
-  [
-   "Qual seleção venceu a Copa do Mundo de 2002?",
-   "Brasil"
-  ],
-  [
-   "Quantos sets precisa vencer para ganhar um jogo de vôlei?",
-   "3"
-  ],
-  [
-   "Qual cidade sediou as Olimpíadas de 2016?",
-   "Rio de Janeiro"
-  ],
-  [
-   "Em qual esporte Ayrton Senna foi campeão?",
-   "Fórmula 1"
-  ],
-  [
-   "Quantos minutos tem um jogo de futebol (tempo normal)?",
-   "90"
-  ],
-  [
-   "Qual é o esporte nacional do Japão?",
-   "Sumô"
-  ],
-  [
-   "Em qual esporte existe o termo 'strike'?",
-   "Boliche"
-  ]
- ],
- "Música": [
-  [
-   "Quantas cordas tem um violão comum?",
-   "6"
-  ],
-  [
-   "Qual gênero musical nasceu no Rio de Janeiro no fim dos anos 50?",
-   "Bossa nova"
-  ],
-  [
-   "Quantas notas musicais existem na escala básica (dó, ré, mi…)?",
-   "7"
-  ],
-  [
-   "Qual instrumento tem teclas pretas e brancas?",
-   "Piano"
-  ],
-  [
-   "Qual estado é o berço do forró?",
-   "Pernambuco"
-  ],
-  [
-   "Qual instrumento é tocado com arco?",
-   "Violino"
-  ],
-  [
-   "Qual cidade é conhecida como a capital do samba?",
-   "Rio de Janeiro"
-  ],
-  [
-   "O que significa 'a cappella'?",
-   "Cantar sem instrumentos"
-  ],
-  [
-   "Qual gênero musical é a marca de Salvador no Carnaval?",
-   "Axé"
-  ],
-  [
-   "Qual é o instrumento de sopro feito de metal?",
-   "Trompete"
-  ],
-  [
-   "Quantos integrantes tem um quarteto?",
-   "4"
-  ],
-  [
-   "Qual instrumento marca o ritmo numa roda de samba?",
-   "Pandeiro"
-  ]
- ],
- "Brasil": [
-  [
-   "Qual é o estado mais populoso do Brasil?",
-   "São Paulo"
-  ],
-  [
-   "Quantos estados tem o Brasil?",
-   "26"
-  ],
-  [
-   "Qual é a capital do Rio Grande do Sul?",
-   "Porto Alegre"
-  ],
-  [
-   "Qual bioma cobre a maior parte do Nordeste?",
-   "Caatinga"
-  ],
-  [
-   "Qual é o prato típico do Brasil feito com feijão preto e carnes?",
-   "Feijoada"
-  ],
-  [
-   "Qual cidade é conhecida como a 'Veneza Brasileira'?",
-   "Recife"
-  ],
-  [
-   "Em qual estado fica a maior parte do Pantanal?",
-   "Mato Grosso do Sul"
-  ],
-  [
-   "Qual é a moeda do Brasil?",
-   "Real"
-  ],
-  [
-   "Qual cidade é a capital de Minas Gerais?",
-   "Belo Horizonte"
-  ],
-  [
-   "Qual é a festa típica de junho no Nordeste?",
-   "Festa junina"
-  ],
-  [
-   "Qual estado tem Florianópolis como capital?",
-   "Santa Catarina"
-  ],
-  [
-   "Qual é a capital do Brasil?",
-   "Brasília"
-  ]
- ],
- "Comida": [
-  [
-   "De qual país vem a pizza?",
-   "Itália"
-  ],
-  [
-   "Qual é o ingrediente principal do guacamole?",
-   "Abacate"
-  ],
-  [
-   "Qual fruta é usada pra fazer vinho?",
-   "Uva"
-  ],
-  [
-   "De que é feito o chocolate?",
-   "Cacau"
-  ],
-  [
-   "Qual prato japonês é feito com arroz e peixe cru?",
-   "Sushi"
-  ],
-  [
-   "Qual tempero deixa o curry amarelo?",
-   "Cúrcuma"
-  ],
-  [
-   "Qual é o ingrediente principal do pão de queijo?",
-   "Polvilho"
-  ],
-  [
-   "Qual é a bebida feita com café e leite vaporizado?",
-   "Cappuccino"
-  ],
-  [
-   "De qual estado vem o acarajé?",
-   "Bahia"
-  ],
-  [
-   "Qual fruta é a base da caipirinha tradicional?",
-   "Limão"
-  ],
-  [
-   "Qual queijo é tradicionalmente usado na pizza?",
-   "Mussarela"
-  ],
-  [
-   "Qual doce é feito com leite condensado e chocolate em pó?",
-   "Brigadeiro"
-  ]
- ],
- "Animais": [
-  [
-   "Qual é o maior animal do planeta?",
-   "Baleia-azul"
-  ],
-  [
-   "Quantas patas tem uma aranha?",
-   "8"
-  ],
-  [
-   "Qual animal é conhecido como o 'rei da selva'?",
-   "Leão"
-  ],
-  [
-   "Qual ave não voa e vive na Antártida?",
-   "Pinguim"
-  ],
-  [
-   "Qual mamífero consegue voar?",
-   "Morcego"
-  ],
-  [
-   "Qual é o animal mais alto do mundo?",
-   "Girafa"
-  ],
-  [
-   "Qual animal muda de cor pra se camuflar?",
-   "Camaleão"
-  ],
-  [
-   "Quantos corações tem um polvo?",
-   "3"
-  ],
-  [
-   "Qual é o maior felino do mundo?",
-   "Tigre"
-  ],
-  [
-   "Qual inseto produz mel?",
-   "Abelha"
-  ],
-  [
-   "Qual animal brasileiro é símbolo da Mata Atlântica?",
-   "Mico-leão-dourado"
-  ],
-  [
-   "Qual é o maior réptil do mundo?",
-   "Crocodilo-de-água-salgada"
-  ]
- ]
 };

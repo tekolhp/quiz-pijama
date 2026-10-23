@@ -84,6 +84,33 @@ function send(ev, payload){
 }
 const params = new URLSearchParams(location.search);
 
+// ======================= CUSTOM QUESTIONS (made by the host, saved on this device) =======================
+const CUSTOM_THEME = "Perguntas da família";
+const CUSTOM_KEY = "quiz.custom";
+function loadCustom(){ const c=load(CUSTOM_KEY); return Array.isArray(c)?c:[]; }
+function syncCustom(){ const c=loadCustom(); if(c.length) BANK[CUSTOM_THEME]=c; else delete BANK[CUSTOM_THEME]; }
+function renderCustom(){
+  const box=$("#customList"); box.innerHTML="";
+  const c=loadCustom();
+  c.forEach((q,i)=>{
+    const row=el("div","arow"); row.style.setProperty("--team","var(--accent)");
+    row.append(el("span","ans", q[0]+" → "+q[1]));
+    const rm=el("button","btn ghost","✕"); rm.type="button"; rm.setAttribute("aria-label","Remover pergunta");
+    rm.addEventListener("click", ()=>{ const c=loadCustom(); c.splice(i,1); store(CUSTOM_KEY,c); syncCustom(); renderCustom(); renderThemes(); });
+    row.append(rm); box.append(row);
+  });
+  $("#customCount").textContent = c.length ? c.length+" pergunta(s)" : "";
+}
+$("#addCustom").addEventListener("click", ()=>{
+  const q=$("#customQ").value.trim(), a=$("#customA").value.trim();
+  if(!q||!a) return;
+  const c=loadCustom(); c.push([q,a]); store(CUSTOM_KEY,c); syncCustom();
+  $("#customQ").value=""; $("#customA").value=""; $("#customQ").focus();
+  if(!host.themes.includes(CUSTOM_THEME)) host.themes.push(CUSTOM_THEME);
+  renderCustom(); renderThemes(); saveHost();
+});
+syncCustom();
+
 // ======================= HOST =======================
 const host = { code:null, teams:{}, themes:[], count:15, secs:30, deck:[], idx:0, answers:{}, timer:null, left:0, phase:"lobby" };
 const playing = () => Object.entries(host.teams).filter(([,t])=>t.ok);
@@ -124,7 +151,7 @@ async function startHost(saved){
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
   $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
-  renderThemes(); renderTeamList();
+  renderThemes(); renderTeamList(); renderCustom();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
   if(saved && host.deck.length && host.phase!=="lobby"){
@@ -154,7 +181,7 @@ function renderThemes(){
     const lab = el("label","theme");
     const cb = el("input"); cb.type="checkbox"; cb.id="theme-"+i; cb.value=t; cb.checked = host.themes.includes(t);
     cb.addEventListener("change", ()=>{ host.themes = [...box.querySelectorAll("input:checked")].map(x=>x.value); saveHost(); });
-    lab.append(cb, document.createTextNode(t), el("span","n",BANK[t].length)); box.append(lab);
+    lab.append(cb, document.createTextNode(t)); box.append(lab);
   });
 }
 $("#mixAll").addEventListener("click", ()=>{ const all=Object.keys(BANK); host.themes = host.themes.length===all.length ? [] : all.slice(); renderThemes(); });
