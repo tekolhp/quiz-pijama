@@ -83,6 +83,15 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline
 .row .btn{flex:1 1 140px}
 .stack{display:flex;flex-direction:column;gap:20px}
 @media (prefers-reduced-motion:reduce){.progress i{transition:none}}
+@media (min-width:700px){
+  canvas{max-width:720px;margin:0 auto}
+  .aquarium{background:#061128 linear-gradient(#0a1b3f,#0a1b3f) center/720px 100% no-repeat}
+  main{max-width:600px}
+  body{font-size:18px}
+  h1{font-size:22px}
+  .question{font-size:26px}
+  .code{font-size:48px}
+}
 
 /* team color tint on player phone */
 .dot{display:inline-block;width:12px;height:12px;background:var(--team,#999);border:2px solid #000;flex:0 0 auto}
