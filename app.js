@@ -225,7 +225,9 @@ $("#btnStart").addEventListener("click", ()=>{
   if(!host.themes.length) return msg("#lobbyMsg","Escolhe pelo menos um tema (ou mistura tudo).");
   if(!playing().length) return msg("#lobbyMsg","Confirma pelo menos uma equipe.");
   msg("#lobbyMsg","");
-  const pool=[]; host.themes.forEach(t=>BANK[t].forEach(q=>{ const l=qLevel(q); if(l===0 || host.levels.includes(l)) pool.push({theme:t,q}); })); shuffle(pool);
+  const pool=[], seen=new Set();
+  host.themes.forEach(t=>(BANK[t]||[]).forEach(q=>{ const l=qLevel(q); const k=norm(q[0]); if(seen.has(k)) return; seen.add(k); if(l===0 || host.levels.includes(l)) pool.push({theme:t,q}); }));
+  shuffle(pool);
   if(!pool.length) return msg("#lobbyMsg","Nenhuma pergunta com essa combinação de temas e dificuldade.");
   host.deck=[]; while(host.deck.length<host.count) host.deck.push(...pool); host.deck=host.deck.slice(0,host.count);
   Object.values(host.teams).forEach(t=>t.score=0);
