@@ -749,8 +749,7 @@ function tapScene(wx, wy, nowMs){
     reactTo(best, kind);
     return best.name;
   }
-  // empty water: a few bubbles + nearby characters turn to look
-  if(!reduce) for(let i=0;i<5;i++) bubbles.push(Object.assign(newBubble(wx + (Math.random()-.5)*14, wy + Math.random()*6), { s: Math.random()<.5?0:1, v:.5+Math.random()*.4 }));
+  // empty water: nearby characters turn to look (bubbles only exist inside the minigame)
   actors.forEach(a=>{
     const cx = a.x + lastOffFg + SPR_W*S/2;
     if(Math.abs(cx - wx) < 150 && (a.state==="walk"||a.state==="idle"||a.state==="look")){
