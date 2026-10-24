@@ -171,8 +171,12 @@ textarea:focus-visible{outline:3px solid var(--accent)}
       <p class="small">Cria as tuas. Ficam salvas neste aparelho e viram o tema "Perguntas da família".</p>
       <input type="text" id="customQ" placeholder="Pergunta" maxlength="160">
       <input type="text" id="customA" placeholder="Resposta certa" maxlength="80">
-      <button class="btn" id="addCustom" type="button">+ adicionar pergunta</button>
+      <input type="text" id="customAlt" placeholder="Outras respostas aceitas (separa por vírgula) — opcional" maxlength="200">
+      <div class="row"><button class="btn" id="addCustom" type="button">+ adicionar pergunta</button><button class="btn ghost" id="cancelCustom" type="button" hidden>Cancelar edição</button></div>
+      <p class="small">Na correção vale erro de digitação, sem acento, maiúscula e parte do nome. E o host sempre pode validar na mão.</p>
       <div class="answers" id="customList"></div>
+      <div class="row"><button class="btn ghost" id="exportCustom" type="button">Copiar lista</button><button class="btn ghost" id="importCustom" type="button">Colar lista</button></div>
+      <textarea id="customPaste" hidden placeholder="Cola aqui a lista copiada de outro aparelho (uma por linha: pergunta | resposta | alternativas)"></textarea>
     </div>
     <div class="card">
       <p class="label">Número de perguntas</p>

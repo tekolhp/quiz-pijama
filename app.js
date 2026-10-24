@@ -108,25 +108,47 @@ const CUSTOM_THEME = "Perguntas da família";
 const CUSTOM_KEY = "quiz.custom";
 function loadCustom(){ const c=load(CUSTOM_KEY); return Array.isArray(c)?c:[]; }
 function syncCustom(){ const c=loadCustom(); if(c.length) BANK[CUSTOM_THEME]=c; else delete BANK[CUSTOM_THEME]; }
+let editingCustom = -1;
 function renderCustom(){
   const box=$("#customList"); box.innerHTML="";
   const c=loadCustom();
   c.forEach((q,i)=>{
     const row=el("div","arow"); row.style.setProperty("--team","var(--accent)");
-    row.append(el("span","ans", q[0]+" → "+q[1]));
+    const alts=q.slice(2).filter(x=>typeof x==="string");
+    row.append(el("span","ans", q[0]+" → "+q[1]+(alts.length?" ("+alts.join(", ")+")":"")));
+    const ed=el("button","btn ghost","✎"); ed.type="button"; ed.setAttribute("aria-label","Editar pergunta");
+    ed.addEventListener("click", ()=>{ editingCustom=i; $("#customQ").value=q[0]; $("#customA").value=q[1]; $("#customAlt").value=alts.join(", "); $("#addCustom").textContent="Salvar alteração"; $("#cancelCustom").hidden=false; $("#customQ").focus(); });
     const rm=el("button","btn ghost","✕"); rm.type="button"; rm.setAttribute("aria-label","Remover pergunta");
-    rm.addEventListener("click", ()=>{ const c=loadCustom(); c.splice(i,1); store(CUSTOM_KEY,c); syncCustom(); renderCustom(); renderThemes(); });
-    row.append(rm); box.append(row);
+    rm.addEventListener("click", ()=>{ const c=loadCustom(); c.splice(i,1); store(CUSTOM_KEY,c); syncCustom(); if(editingCustom===i) resetCustomForm(); renderCustom(); renderThemes(); });
+    row.append(ed, rm); box.append(row);
   });
   $("#customCount").textContent = c.length ? c.length+" pergunta(s)" : "";
 }
+function resetCustomForm(){ editingCustom=-1; $("#customQ").value=""; $("#customA").value=""; $("#customAlt").value=""; $("#addCustom").textContent="+ adicionar pergunta"; $("#cancelCustom").hidden=true; }
+$("#cancelCustom").addEventListener("click", resetCustomForm);
 $("#addCustom").addEventListener("click", ()=>{
   const q=$("#customQ").value.trim(), a=$("#customA").value.trim();
+  const alts=$("#customAlt").value.split(",").map(x=>x.trim()).filter(Boolean);
   if(!q||!a) return;
-  const c=loadCustom(); c.push([q,a]); store(CUSTOM_KEY,c); syncCustom();
-  $("#customQ").value=""; $("#customA").value=""; $("#customQ").focus();
+  const c=loadCustom(); const entry=[q,a,...alts];
+  if(editingCustom>=0 && c[editingCustom]) c[editingCustom]=entry; else c.push(entry);
+  store(CUSTOM_KEY,c); syncCustom(); resetCustomForm(); $("#customQ").focus();
   if(!host.themes.includes(CUSTOM_THEME)) host.themes.push(CUSTOM_THEME);
   renderCustom(); renderThemes(); saveHost();
+});
+$("#exportCustom").addEventListener("click", async ()=>{
+  const text=loadCustom().map(q=>q[0]+" | "+q[1]+(q.length>2?" | "+q.slice(2).join(", "):"")).join("\n");
+  try{ await navigator.clipboard.writeText(text); $("#exportCustom").textContent="Copiado!"; }catch(e){ const t=$("#customPaste"); t.hidden=false; t.value=text; t.select(); }
+  setTimeout(()=>$("#exportCustom").textContent="Copiar lista",1500);
+});
+$("#importCustom").addEventListener("click", ()=>{
+  const t=$("#customPaste");
+  if(t.hidden){ t.hidden=false; t.value=""; t.placeholder="Cola aqui e toca em Colar lista de novo"; t.focus(); return; }
+  const lines=t.value.split("\n").map(l=>l.trim()).filter(Boolean); if(!lines.length){ t.hidden=true; return; }
+  const c=loadCustom(); const have=new Set(c.map(q=>norm(q[0])));
+  lines.forEach(l=>{ const parts=l.split("|").map(x=>x.trim()); if(parts.length<2||!parts[0]||!parts[1]) return; if(have.has(norm(parts[0]))) return; const alts=(parts[2]||"").split(",").map(x=>x.trim()).filter(Boolean); c.push([parts[0],parts[1],...alts]); have.add(norm(parts[0])); });
+  store(CUSTOM_KEY,c); syncCustom(); t.hidden=true; renderCustom(); renderThemes();
+  if(c.length && !host.themes.includes(CUSTOM_THEME)) host.themes.push(CUSTOM_THEME); saveHost();
 });
 syncCustom();
 
