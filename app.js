@@ -40,6 +40,7 @@ function newPeer(id){
   peer = id ? new Peer(id, { debug:1 }) : new Peer({ debug:1 });
   return new Promise((res,rej)=>{ peer.on("open", ()=>res(peer)); peer.on("error", e=>rej(e)); });
 }
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && host.timer) tick(); });
 // host side
 async function openHost(code, h){
   handlers=h; conns={};
@@ -218,7 +219,7 @@ function loadQuestionView(){
   $("#btnPlay").hidden=false; $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
   renderHostAnswers();
 }
-function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:host.left, teams:host.teams }; }
+function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:Math.max(0,Math.ceil((host.endsAt-Date.now())/1000)), teams:host.teams }; }
 const norm = t => String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
 function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=Array.from({length:n+1},(_,j)=>j); for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; }
 function close(a,c){ if(a===c) return true; const tol = c.length<=4 ? 0 : c.length<=7 ? 1 : 2; return lev(a,c)<=tol; }
@@ -242,15 +243,17 @@ function sendCurrentState(){
   else if(host.phase==="end") send("end", { scores: scoreList() });
 }
 $("#btnPlay").addEventListener("click", ()=>{
-  host.phase="question"; host.left=host.secs; $("#btnPlay").hidden=true; $("#btnReveal").hidden=false;
+  host.phase="question"; host.left=host.secs; host.endsAt=Date.now()+host.secs*1000; $("#btnPlay").hidden=true; $("#btnReveal").hidden=false;
   $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · valendo!`;
   send("question", questionPayload());
-  host.timer=setInterval(tick,1000);
+  host.timer=setInterval(tick,250);
   makeSay(pick(actors), "VALENDO!", 90);
 });
 function stopTimer(){ if(host.timer){ clearInterval(host.timer); host.timer=null; } }
 function tick(){
-  host.left=Math.max(0,host.left-1);
+  const left=Math.max(0, Math.ceil((host.endsAt-Date.now())/1000));
+  if(left===host.left && left>0) return;
+  host.left=left;
   const warn=host.left<=5;
   $("#hClock").textContent=host.left+"s"; $("#hClock").classList.toggle("warn",warn);
   $("#htbar").style.width=(host.left/host.secs*100)+"%"; $("#htbar").classList.toggle("warn",warn);
@@ -292,7 +295,7 @@ function revealView(){
   $("#hClock").textContent="TEMPO!"; $("#htbar").style.width="0%";
   renderHostAnswers();
 }
-$("#btnReveal").addEventListener("click", ()=>{ host.left=0; tick(); });
+$("#btnReveal").addEventListener("click", ()=>{ host.endsAt=Date.now(); tick(); });
 $("#btnNext").addEventListener("click", ()=>{
   playing().forEach(([id,t])=>{ if(host.marks[id]) t.score++; });
   send("reveal", revealPayload()); saveHost();
@@ -318,8 +321,9 @@ store("quiz.pid", player.id);
 $("#btnJoin").addEventListener("click", ()=>{ $("#inCode").value=(params.get("sala")||"").toUpperCase(); show("playerJoin"); $("#inCode").focus(); });
 if(params.get("sala")){ $("#inCode").value=params.get("sala").toUpperCase(); show("playerJoin"); }
 
-$("#btnEnter").addEventListener("click", async ()=>{
-  const code=$("#inCode").value.trim().toUpperCase();
+const PLAYER_KEY="quiz.player";
+$("#btnEnter").addEventListener("click", ()=>joinRoom($("#inCode").value.trim().toUpperCase()));
+async function joinRoom(code){
   if(code.length!==4) return msg("#joinMsg","Código tem 4 letras.");
   msg("#joinMsg",""); player.code=code; $("#pRoom").textContent=code;
   $("#btnEnter").disabled=true; $("#btnEnter").textContent="Conectando…";
@@ -327,16 +331,20 @@ $("#btnEnter").addEventListener("click", async ()=>{
     teams: p => applyTeams(p.teams),
     ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores(p.scores); show("playerWait"); },
     question: p => { if(p.teams) applyTeams(p.teams); if(player.me?.ok) playerQuestion(p); },
-    tick: p => { if(p.idx!==player.idx) return; setPlayerClock(p.left, true); },
+    tick: p => { if(p.idx!==player.idx) return; startCountdown(p.left); },
     reveal: p => playerReveal(p),
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
     lobby: () => { player.idx=-1; waitLobby(); },
   }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; return msg("#joinMsg","Não achei essa sala. Confere o código e se o host já criou a sala."); }
   $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar";
   send("join",{ id:player.id });
+  store(PLAYER_KEY,{ code, at:Date.now() });
   $("#waitTitle").textContent="Entrando…"; $("#waitText").textContent="Esperando o host te ver.";
   show("playerWait");
-});
+}
+// Reload or reopen: go straight back into the room (same team, same color)
+(()=>{ const sv=load(PLAYER_KEY); const fromUrl=(params.get("sala")||"").toUpperCase();
+  if(sv && sv.code && Date.now()-sv.at < 6*3600e3 && (!fromUrl || fromUrl===sv.code) && !savedHost){ $("#inCode").value=sv.code; show("playerJoin"); joinRoom(sv.code); } })();
 function applyTeams(teams){
   const me = teams?.[player.id]; const was = player.me;
   player.me = me || null;
@@ -361,6 +369,13 @@ function renderPlayerScores(list){
   const box=$("#pScores"); box.innerHTML="";
   (list||[]).forEach(x=>{ const c=teamChip({name:x.team,color:x.color}, x.id===player.id?" active":""); c.append(el("em",null,x.score)); box.append(c); });
 }
+function startCountdown(left){
+  player.endsAt = Date.now()+left*1000;
+  if(player.cd) clearInterval(player.cd);
+  const step=()=>{ const l=Math.max(0, Math.ceil((player.endsAt-Date.now())/1000)); setPlayerClock(l, true); if(l<=0){ clearInterval(player.cd); player.cd=null; } };
+  step(); player.cd=setInterval(step,250);
+}
+function stopCountdown(){ if(player.cd){ clearInterval(player.cd); player.cd=null; } }
 function setPlayerClock(left, running){
   const c=$("#pClock"); const warn=left<=5 && running;
   c.textContent = running ? (left<=0?"TEMPO!":left+"s") : "";
@@ -374,7 +389,7 @@ function playerQuestion(p){
   $("#pqNum").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#pqTheme").textContent=p.theme; $("#pqText").textContent=p.text;
   $("#pFeedback").hidden=true; $("#pAnswer").disabled=false; $("#btnSend").disabled=false;
   $("#pSent").textContent = player.sent ? "Enviado: "+player.sent : "";
-  setPlayerClock(p.left, true);
+  startCountdown(p.left);
   show("playerGame");
   if(fresh){ makeSay(pick(actors), pick(["combina aí!","pensa bem...","eu sei essa!"]), 120); setTimeout(()=>$("#pAnswer").focus(),50); }
 }
@@ -390,7 +405,7 @@ $("#pAnswer").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDef
 function playerReveal(p){
   if(p.idx!==player.idx || !player.me?.ok) return;
   if($("#playerGame").hidden) return;
-  const wasOpen = player.open; player.open=false;
+  const wasOpen = player.open; player.open=false; stopCountdown();
   $("#pAnswer").disabled=true; $("#btnSend").disabled=true;
   const me=p.results[player.id]; const f=$("#pFeedback"); f.hidden=false;
   if(me && me.ok){ f.className="feedback ok"; f.textContent="Acertou! +1 ponto · resposta: "+p.correct; if(wasOpen) sceneReact(true); }
@@ -398,4 +413,4 @@ function playerReveal(p){
   setPlayerClock(0,false); $("#pClock").textContent="tempo encerrado";
   renderPlayerScores(p.scores);
 }
-$("#btnLeave").addEventListener("click", ()=>{ if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; player.code=null; show("home"); });
+$("#btnLeave").addEventListener("click", ()=>{ store(PLAYER_KEY, undefined); stopCountdown(); if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; player.code=null; show("home"); });
