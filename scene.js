@@ -848,7 +848,7 @@ function sceneReact(ok){
 const G = {
   el:null, cv:null, ctx:null, w:0, h:0, zoom:1, floor:0, raf:0, last:0,
   bodies:[], pool:[], live:0, splash:[], held:{ l:new Set(), r:new Set() }, emitAcc:{ l:0, r:0 },
-  best:0, airborne:0, keyFn:null, visFn:null, hud:null, hudTxt:"",
+  best:0, airborne:0, drops:[], shake:0, keyFn:null, visFn:null, hud:null, hudTxt:"",
   aim:{ l:-50*Math.PI/180, r:-130*Math.PI/180 },          // jet angles (radians, screen coords: -90deg = straight up)
   noz:{ l:{x:30,y:0}, r:{x:0,y:0} },                       // nozzle positions in world units
   trans:null, aq:null,                                     // open/close transition state, aquarium rect at open
@@ -864,7 +864,14 @@ const EJECT_AT = 120;                                      // bubble hits needed
 let gLaunched = 0, gEjected = 0;                           // session totals for the HUD
 // rate-limited chatter: one bubble per character, ~1 line per 3-5 s
 function gTalk(c, lines, dur){ if(c.say || (c.talkCd||0) > 0) return; gSay(c, pick(lines), dur || 70); c.talkCd = 180 + Math.random()*120; }
+const SPLAT_GROW = 21, SPLAT_SQUASH = 5, SPLAT_SLIDE = 72, SPLAT_SCALE = 4.5;   // frames (~350 ms, ~80 ms, ~1.2 s)
+const SPLAT_LINES = ["PLOFT!"];
 function ejectBody(c){
+  if(Math.random() < .35){                                 // "splat on the glass": flies toward the viewer
+    c.ej = { phase:"grow", t:0, x0:c.x, y0:c.y, rot0:c.rot, spin:(Math.random()<.5?-1:1)*.35, trail:[] };
+    c.heat = 0; c.say = null; c.sayT = 0; c.talkCd = 200; c.vx = c.vy = 0;
+    return;
+  }
   c.ej = { phase:"out", t:0, spin:(Math.random()<.5?-1:1)*(.25 + Math.random()*.15) };
   const toSide = Math.random() < .45, dir = c.x < G.w/2 ? -1 : 1;
   c.vx = toSide ? dir*(6 + Math.random()*2) : (Math.random()-.5)*3; c.vy = toSide ? -6 : -11;
@@ -876,9 +883,31 @@ function ejectBody(c){
 function stepEjected(c, dt, ground){
   const e = c.ej; if(!e) return false;
   e.t += dt;
-  if(e.phase === "out"){
+  const fast = reduce ? .5 : 1;                            // reduced motion: shorter, no shake
+  if(e.phase === "grow"){
+    const t = Math.min(1, e.t / (SPLAT_GROW*fast)), q = t*t;          // ease-in toward the viewer
+    e.cx = G.w/2; e.cy = G.h*.42;
+    c.x = e.x0 + (e.cx - e.x0)*q; c.y = e.y0 + (e.cy - e.y0)*q;
+    e.scale = 1 + (SPLAT_SCALE - 1)*q; c.rot = (e.rot0 + e.spin*e.t) * (1 - t);   // a little spin, then faces the camera
+    if(t >= 1){
+      e.phase = "splat"; e.t = 0; c.rot = 0; gEjected++;
+      gSay(c, pick(SPLAT_LINES), 40);
+      if(!reduce) G.shake = 9;
+      for(let i=0;i<14;i++){ const a = Math.random()*Math.PI*2, v = 1.5 + Math.random()*3;
+        G.drops.push({ x:c.x + Math.cos(a)*20, y:c.y + Math.sin(a)*14, vx:Math.cos(a)*v, vy:Math.sin(a)*v - 1, life:30 + Math.random()*20, r: Math.random()<.4 ? 2 : 1 }); }
+    }
+  } else if(e.phase === "splat"){
+    if(e.t >= SPLAT_SQUASH*fast){ e.phase = "slide"; e.t = 0; e.sy0 = c.y; }
+  } else if(e.phase === "slide"){
+    const t = Math.min(1, e.t / (SPLAT_SLIDE*fast)), size = SPR_W*S*SPLAT_SCALE;
+    c.y = e.sy0 + (G.h + size*.7 - e.sy0) * (t*t*(3 - 2*t)*.35 + t*.65);   // slow start, steady slide
+    c.x = e.cx + Math.sin(e.t/9) * 4;
+    e.trail.push({ x:c.x, y:c.y, life:90 });
+    if(Math.random() < .25*dt) G.drops.push({ x:c.x + (Math.random()-.5)*size*.5, y:c.y + size*.25, vx:0, vy:.5, life:50, r:1, drip:true });
+    if(t >= 1){ e.phase = "gone"; e.t = 0; e.wait = 240 + Math.random()*120; c.say = null; c.sayT = 0; }
+  } else if(e.phase === "out"){
     c.x += c.vx*dt; c.y += c.vy*dt; c.rot += e.spin*dt;
-    if(c.y < -60 || c.x < -60 || c.x > G.w + 60){ e.phase = "gone"; e.t = 0; e.wait = 240 + Math.random()*120; c.say = null; c.sayT = 0; }
+    if(c.y < -60 || c.x < -60 || c.x > G.w + 60){ e.phase = "gone"; e.t = 0; e.wait = 240 + Math.random()*120; c.say = null; c.sayT = 0; e.trail = null; }
   } else if(e.phase === "gone"){
     if(e.t >= e.wait){
       const fromLeft = Math.random() < .5;
@@ -890,6 +919,7 @@ function stepEjected(c, dt, ground){
     c.y = ground; c.x += c.dir*.9*dt; c.dist += .9*dt;
     if((c.dir > 0 && c.x >= e.goal) || (c.dir < 0 && c.x <= e.goal)){ c.ej = null; c.heat = 0; c.vx = c.vy = 0; c.wander = 120; }
   }
+  if(e.trail){ e.trail.forEach(p=>p.life -= dt); while(e.trail.length && e.trail[0].life <= 0) e.trail.shift(); if(e.phase === "gone" && !e.trail.length) e.trail = null; }
   if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
   c.talkCd = Math.max(0, (c.talkCd||0) - dt);
   return true;
@@ -919,7 +949,7 @@ function gameSize(){
 function gameReset(){
   G.bodies = actors.map((a,i)=>({ name:a.name, x:(i+.5)*(G.w/actors.length), y:G.floor - G_FEET, vx:0, vy:0,
     rot:0, dir:a.dir, air:false, dist:0, peak:0, dizzy:0, say:null, sayT:0, blinkT:60+Math.random()*200, wander:Math.random()*200 }));
-  G.pool.forEach(b=>b.on=false); G.live = 0; G.splash = []; G.best = 0; G.airborne = 0;
+  G.pool.forEach(b=>b.on=false); G.live = 0; G.splash = []; G.drops = []; G.shake = 0; if(G.cv && G.cv.style) G.cv.style.transform = ""; G.best = 0; G.airborne = 0;
   G.held.l.clear(); G.held.r.clear();
 }
 function gSay(b, text, dur){ b.say = text; b.sayT = dur || 70; }
@@ -943,6 +973,10 @@ function stepBubbles(dt, popChance){
   }
   G.splash = G.splash.filter(f=>(f.life -= dt) > 0);
   G.splash.forEach(f=>{ f.x += f.vx*dt; f.y += f.vy*dt; });
+  G.drops = (G.drops||[]).filter(d=>(d.life -= dt) > 0 && d.y < G.h + 10);
+  G.drops.forEach(d=>{ d.vy += (d.drip ? .04 : .12)*dt; d.vx *= .96; d.x += d.vx*dt; d.y += d.vy*dt; });
+  if(G.shake > 0){ G.shake = Math.max(0, G.shake - dt);
+    if(G.cv && G.cv.style) G.cv.style.transform = G.shake > 0 ? "translate(" + Math.round((Math.random()-.5)*6) + "px," + Math.round((Math.random()-.5)*6) + "px)" : ""; }
 }
 function gameStep(dt){
   // emit: ~90 bubbles/s per held jet
@@ -1042,6 +1076,39 @@ function gameStep(dt){
   });
   G.airborne = air;
 }
+// "Splat on the glass" layer: drawn above the sea, bubbles and speech (the DOM HUD/strip stay on top)
+function drawGlassLayer(k, tm){
+  G.bodies.forEach(c=>{
+    const e = c.ej; if(!e || !e.trail && !(e.phase === "grow" || e.phase === "splat" || e.phase === "slide")) return;
+    const sp = SPR[c.name] || SPR.octo, base = SPR_W*S;
+    // wet trail: translucent streak that fades
+    if(e.trail && e.trail.length > 1){
+      const tw = Math.round(base*SPLAT_SCALE*.42/S)*S;
+      e.trail.forEach(p=>{ k.globalAlpha = Math.max(0, p.life/90) * .22; k.fillStyle = "#cfefff";
+        k.fillRect(Math.round((p.x - tw/2)/S)*S, Math.round(p.y/S)*S, tw, 3*S); });
+      k.globalAlpha = 1;
+    }
+    if(e.phase === "gone" || e.phase === "out" || e.phase === "back") return;
+    let sc = e.scale || 1, sx = 1, sy = 1;
+    if(e.phase === "splat"){ sc = SPLAT_SCALE; sx = 1.25; sy = .75; }
+    if(e.phase === "slide"){ sc = SPLAT_SCALE; sx = 1.12 + Math.sin(e.t/7)*.03; sy = .86 - Math.sin(e.t/7)*.03; }
+    const fr = sp.wide, img = fr[c.dir < 0 ? "l" : "r"];
+    // motion lines while flying at the viewer
+    if(e.phase === "grow" && !reduce){
+      k.fillStyle = "rgba(247,245,255,.7)";
+      for(let i=0;i<8;i++){ const a = i/8*Math.PI*2 + .3, r0 = base*sc*.55, r1 = r0 + 10 + sc*4;
+        for(let r=r0; r<r1; r+=S*2) k.fillRect(Math.round((c.x + Math.cos(a)*r)/S)*S, Math.round((c.y + Math.sin(a)*r)/S)*S, S, S); }
+    }
+    const w = img.width*sc*sx, h = img.height*sc*sy;
+    k.save(); k.translate(Math.round(c.x), Math.round(c.y)); if(c.rot) k.rotate(Math.round(c.rot/(Math.PI/8))*(Math.PI/8));
+    k.drawImage(img, Math.round(-w/2), Math.round(-h/2), Math.round(w), Math.round(h)); k.restore();
+    if(c.say) bubbleText(c.say, c.x, c.y - h/2 - 4, null, k, G.w);
+  });
+  // water droplets on the glass
+  (G.drops||[]).forEach(d=>{ k.globalAlpha = Math.min(1, d.life/20); k.fillStyle = "#bfe8ff";
+    k.fillRect(Math.round(d.x/S)*S, Math.round(d.y/S)*S, d.r*S, (d.r+ (d.drip?1:0))*S); k.fillStyle = "#f7f5ff"; k.fillRect(Math.round(d.x/S)*S, Math.round(d.y/S)*S, S, S); });
+  k.globalAlpha = 1;
+}
 function gameDraw(now){
   const k = G.ctx, w = G.w, h = G.h, tm = reduce ? 0 : now;
   const groundDy = G.trans ? Math.round(G.trans.groundDy || 0) : 0;   // world units the floor sits above its resting spot
@@ -1092,7 +1159,7 @@ function gameDraw(now){
   const taken = [], heads = [];
   k.save(); k.translate(0, groundDy);
   G.bodies.forEach(c=>{
-    if(c.ej && c.ej.phase === "gone") return;                        // off-screen, waiting to walk back in
+    if(c.ej && (c.ej.phase === "gone" || c.ej.phase === "grow" || c.ej.phase === "splat" || c.ej.phase === "slide")) return;   // gone, or drawn in the glass layer
     const sp = SPR[c.name] || SPR.octo, speed = Math.hypot(c.vx, c.vy);
     let fr;
     if(c.ej && c.ej.phase === "out") fr = Math.floor(tm/120)%2 ? sp.wide : sp.happy;                   // launched!
@@ -1110,14 +1177,6 @@ function gameDraw(now){
     const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
     k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S + hovY); if(rot) k.rotate(rot);
     k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S); k.restore();   // feet sit at y + 24
-    // ejection meter: 3 tiny segments over the head, only while it is being hit
-    if(!c.ej && !closing && c.heat > 1 && c.hitT < 45){
-      const seg = EJECT_AT/3, mx = Math.round(c.x/S)*S - 7*S, my = Math.round(c.y/S)*S - 17*S + hovY;
-      k.fillStyle = "#1b1233"; k.fillRect(mx - S, my - S, 16*S, 4*S);
-      for(let q=0;q<3;q++){ const f = Math.max(0, Math.min(1, (c.heat - q*seg)/seg)), sx = mx + q*5*S;
-        k.fillStyle = "#3a3f63"; k.fillRect(sx, my, 4*S, 2*S);
-        if(f > 0){ k.fillStyle = ["#ffe066","#ff9a3c","#ff5a5a"][q]; k.fillRect(sx, my, Math.max(1, Math.round(f*4))*S, 2*S); } }
-    }
     heads.push([c, c.x, c.y - 14*S]);
   });
   k.restore();
@@ -1127,6 +1186,7 @@ function gameDraw(now){
   G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
     if(f.star) drawStar(x, y, f.c, k); else { k.fillStyle = "#bfe8ff"; k.fillRect(x, y, S, S); } });
   heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
+  drawGlassLayer(k, tm);
   // HUD lives in the DOM (crisp pixel font); touch it only when a number changes
   const txt = gLaunched + "|" + gEjected;
   if(txt !== G.hudTxt){ G.hudTxt = txt;
@@ -1319,6 +1379,7 @@ function closeGame(){
   G.el.classList.remove("ready");                          // HUD fades out
   G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
   const now = performance.now();
+  G.shake = 0; if(G.cv && G.cv.style) G.cv.style.transform = ""; G.drops = [];
   G.bodies.forEach(c=>{ if(c.ej){ const gone = c.ej.phase !== "back"; c.ej = null; c.heat = 0;
       c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x)); if(gone){ c.y = -40; c.vx = 0; } c.rot = 0; } });
   G.bodies.forEach(c=>{ c.y0 = c.y; c.x0 = c.x; c.vx0 = Math.max(-2, Math.min(2, c.vx)); c.rot0 = c.rot; c.vx = c.vy = 0;
