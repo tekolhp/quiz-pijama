@@ -445,7 +445,7 @@ function layoutWeeds(){
 // Full-width world: keep the pixel size constant and widen the world instead of stretching it.
 function fitScene(){
   const box = cv.parentElement; const pxw = (box && box.clientWidth) || 320;
-  const targetH = Math.max(130, Math.min(260, Math.round(pxw*0.26)));   // display height in css px
+  const targetH = pxw<700 ? Math.max(170, Math.min(230, Math.round(pxw*0.5))) : Math.max(130, Math.min(260, Math.round(pxw*0.26)));   // display height in css px
   const zoom = targetH / H;                                             // css px per world unit
   W = Math.max(320, Math.ceil(pxw / zoom / S) * S);
   cv.width = W; cv.height = H; cv.style.height = targetH+"px"; cv.style.width = "100%";

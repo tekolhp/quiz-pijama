@@ -384,6 +384,11 @@ function renderRank(ol, list){
 $("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
 $("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
+// Hide the aquarium while the on-screen keyboard is up, so the question stays visible on phones
+(()=>{ const ta=$("#pAnswer"); ta.addEventListener("focus", ()=>document.body.classList.add("typing")); ta.addEventListener("blur", ()=>document.body.classList.remove("typing"));
+  if(window.visualViewport){ let base=window.visualViewport.height; window.visualViewport.addEventListener("resize", ()=>{ const h=window.visualViewport.height; if(h<base*0.75) document.body.classList.add("typing"); else if(document.activeElement!==ta) document.body.classList.remove("typing"); if(h>base) base=h; }); } })();
+$("#pAnswer").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); $("#pAnswer").blur(); } });
+
 // ======================= PLAYER =======================
 const player = { id: load("quiz.pid") || Math.random().toString(36).slice(2,10), code:null, me:null, idx:-1, sent:null, open:false, secs:30, shownIdx:-1 };
 store("quiz.pid", player.id);
