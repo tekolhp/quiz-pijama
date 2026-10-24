@@ -18,6 +18,8 @@ const P = {
   or:"#ff9a3c", yl:"#ffe066",                 // flame / feet / stars
   s1:"#e8edff", s2:"#a5afd8",                 // bedsheet
   t1:"#5fdcbc", t2:"#2a958a", t3:"#bdf7e8",   // starfish (mint/teal)
+  a1:"#a3a9b8", a2:"#6b7182", a3:"#2d2f3a",   // raccoon fur + mask
+  u1:"#f2f2f6", u2:"#c4c6d4", gl:"rgba(185,225,255,.38)", gr:"#bfe8ff", // spacesuit + helmet glass
 };
 
 const JOKES = [
@@ -255,6 +257,45 @@ BUILD.star = function(g,f,e){
   px(g,7,10,P.pk); px(g,17,10,P.pk);
   if(e==="happy"){ rect(g,11,10,3,1,P.K); } else if(e==="wide"){ px(g,12,10,P.K); } else { px(g,11,10,P.K); px(g,12,10,P.K); }
 };
+// Raccoon astronaut: orange-and-white suit, chest panel, air tank, glass helmet, fuzzy slippers
+BUILD.racc = function(g,f,e){
+  const tw = [0,1,-1][f];
+  // ringed tail poking out of the back of the suit
+  for(let i=0;i<8;i++){ const x=7-i, y=19-Math.round(i*.6)+(i>4?tw:0), c=(i>>1)%2 ? P.a3 : P.a1; px(g,x,y,c); px(g,x,y+1,c===P.a1?P.a2:P.a3); if(i>1) px(g,x,y-1,c); }
+  // backpack air tank
+  rect(g,3,10,4,8,P.u2); rect(g,3,10,1,8,P.u1); rect(g,4,9,2,1,P.a2); rect(g,3,13,4,1,P.or);
+  // legs + fuzzy slippers (one lifts per walk frame)
+  [[8,f===1?-1:0],[13,f===2?-1:0]].forEach(([x,l])=>{
+    rect(g,x,19+l,3,2,P.u2); rect(g,x,19+l,1,2,P.u1);
+    rect(g,x-1,21+l,5,2,P.pk); px(g,x-1,21+l,P.p3); px(g,x+1,21+l,P.p3); px(g,x+3,21+l,P.p3); px(g,x+4,22+l,P.p2);
+  });
+  // suit body: white with orange shoulders and belt
+  blob(g,11.5,15.5,5.5,4.5,P.u1,P.u2,P.W);
+  recolor(g,(c,x,y)=> (y===18 && (c===P.u1||c===P.u2)) ? P.or : undefined);
+  rect(g,6,12,3,2,P.or); rect(g,15,12,3,2,P.or);
+  // front arm + glove
+  const ay=[0,1,-1][f]; rect(g,15,14+ay,2,3,P.u1); rect(g,15,17+ay,2,1,P.or);
+  // chest control panel
+  rect(g,9,14,5,3,P.a3); px(g,10,15,"#ff5a5a"); px(g,11,15,P.g1); px(g,12,15,P.yl); rect(g,10,16,3,1,P.b1);
+  // helmet glass (translucent) with the head inside
+  ell(g,11.5,6.5,6.5,6,P.gl);
+  blob(g,11.5,7.5,4.5,3.8,P.a1,P.a2,null);
+  px(g,8,3,P.a2); px(g,8,4,P.a1); px(g,9,4,P.a1); px(g,14,3,P.a2); px(g,14,4,P.a1); px(g,13,4,P.a1);   // ears
+  rect(g,8,6,8,2,P.a3);                                                                       // eye mask
+  ell(g,14,9,2.2,1.4,P.W); px(g,16,8,P.K);                                                     // snout + nose
+  [9,12].forEach(x=>{
+    if(e==="closed"){ rect(g,x,7,2,1,P.a1); }
+    else if(e==="happy"){ px(g,x,7,P.W); px(g,x+1,6,P.W); }
+    else if(e==="wide"){ rect(g,x,5,2,3,P.W); px(g,x+1,6,P.K); }
+    else { rect(g,x,6,2,2,P.W); px(g,x+1,7,P.K); }
+  });
+  px(g,9,9,P.pk);
+  if(e==="happy"){ px(g,13,10,P.K); px(g,14,10,P.K); px(g,15,10,P.K); } else if(e==="wide"){ rect(g,14,10,1,2,P.K); } else { px(g,14,10,P.K); }
+  // glass rim + visor reflection
+  for(let y=0;y<14;y++) for(let x=4;x<20;x++) if(inEll(x,y,11.5,6.5,6.5,6) && !inEll(x,y,11.5,6.5,5.6,5.1) && !(get(g,x,y)||"").startsWith("#")) px(g,x,y,P.gr);
+  px(g,9,1,P.W); px(g,8,2,P.W); px(g,7,3,P.W); px(g,7,4,P.W); px(g,17,9,P.W); px(g,16,10,P.gr);
+  rect(g,8,12,8,1,P.or);                                                                      // collar ring
+};
 const HOVER = { puffer:3, jelly:2, ghost:1 };   // floaters hover above the sand
 
 // Prerender every frame of every character (right + left) once
@@ -392,7 +433,7 @@ function mkActor(name, x){
   return { name, x, y: FLOOR - SPR_W*S, dir: Math.random()<.5?1:-1, speed: .3+Math.random()*.35,
     state:"walk", t:0, say:null, sayT:0, bob:Math.random()*10, dist:Math.random()*30, blinkT:60+Math.random()*200, target:null };
 }
-["octo","puffer","horse","jelly","crab","ghost","star"].forEach((n,i)=>actors.push(mkActor(n, 30+i*58)));
+["octo","puffer","horse","jelly","crab","ghost","star","racc"].forEach((n,i)=>actors.push(mkActor(n, 30+i*58)));
 
 let weeds = [], fx = [], bubbles = [], props = [], school = null, schoolCool = 240, gagCool = 420 + Math.random()*300;
 function layoutWeeds(){
@@ -594,6 +635,9 @@ function draw(now){
 
 function update(dt, now){
   actors.forEach(a=>stepActor(a,dt));
+  // air bubbles from the raccoon's backpack tank while it moves
+  actors.forEach(a=>{ if(a.name==="racc" && (a.state==="walk"||a.state==="run"||a.state==="seek") && Math.random() < .035*dt && bubbles.length < 70)
+    bubbles.push(Object.assign(newBubble(a.x + (a.dir>0 ? 4 : 19)*S, FLOOR - 13*S), { s:0, v:.45 })); });
   if((gagCool -= dt) <= 0){ startGag(); gagCool = 520 + Math.random()*620; }
   // bubbles
   bubbles.forEach(b=>{ b.y -= b.v*dt; if(b.y < -10){ Object.assign(b, newBubble(Math.random()*W, FLOOR)); } });

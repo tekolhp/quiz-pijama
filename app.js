@@ -10,7 +10,7 @@ const CREW = [
   { name:"Gelatina",       color:"#ff8ad4", sprite:"jelly" },
   { name:"Seu Caranguejo", color:"#ff6f61", sprite:"crab" },
   { name:"Fantasminha",    color:"#cfd8ff", sprite:"ghost" },
-  { name:"Tartaruguinha",  color:"#4fb3ff", sprite:"horse" },
+  { name:"Guaxinauta",     color:"#9fb4d9", sprite:"racc" },
   { name:"Camarão",        color:"#ffa54f", sprite:"crab" },
   { name:"Ostra",          color:"#b8f0e0", sprite:"jelly" },
   { name:"Lula Roxa",      color:"#c77dff", sprite:"octo" },
