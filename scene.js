@@ -697,18 +697,31 @@ function update(dt, now){
 }
 
 const game = { open:false, expanding:false };
-let last = 0;
+let last = 0, mainRaf = 0, mainTick = 0;
 function frame(now){
+  mainRaf = requestAnimationFrame(frame);                  // reschedule first: an exception below can never kill the loop
+  mainTick = performance.now();
   const dt = Math.min(3, (now-last)/16.7 || 1); last = now;
-  if(game.open){ requestAnimationFrame(frame); return; }   // minigame owns the screen
-  stepHold(dt, now);
-  if(reduce){
-    actors.forEach(a=>{ if(a.sayT>0){ a.sayT -= dt; if(a.sayT<=0){ a.say=null; dirty=true; } } });
-    if(dirty || hold.shown > 0){ draw(0); drawHold(); dirty=false; }
-  } else { update(dt, now); draw(now); drawHold(); }
-  requestAnimationFrame(frame);
+  try{
+    if(game.open){
+      // self-heal: "open" but the overlay is gone (or its loop died) -> force a clean close
+      if(!G.el || G.el.hidden || (!G.raf && !G.trans)) finishClose();
+      else return;                                         // minigame owns the screen
+    }
+    stepHold(dt, now);
+    if(reduce){
+      actors.forEach(a=>{ if(a.sayT>0){ a.sayT -= dt; if(a.sayT<=0){ a.say=null; dirty=true; } } });
+      if(dirty || hold.shown > 0){ draw(0); drawHold(); dirty=false; }
+    } else { update(dt, now); draw(now); drawHold(); }
+  }catch(err){ dirty = true; if(window.console) console.error("scene frame", err); }
 }
-requestAnimationFrame(frame);
+function kickMain(){                                       // (re)start the aquarium loop exactly once
+  if(mainRaf) cancelAnimationFrame(mainRaf);
+  mainTick = performance.now(); mainRaf = requestAnimationFrame(frame);
+}
+kickMain();
+// watchdog: rAF can be dropped by the browser around fullscreen/visibility changes on phones
+setInterval(()=>{ if(!document.hidden && performance.now() - mainTick > 1500){ dirty = true; kickMain(); } }, 1000);
 
 // ---------- pointer interaction ----------
 let lastOffFg = 0, tapTimes = [];
@@ -987,32 +1000,59 @@ function gameDraw(now){
 }
 function gameLoop(now){
   if(!game.open){ G.raf = 0; return; }
-  if(document.hidden){ G.last = now; G.raf = requestAnimationFrame(gameLoop); return; }   // paused while hidden
+  G.raf = requestAnimationFrame(gameLoop);                 // reschedule first
+  G.tick = performance.now();
+  if(document.hidden){ G.last = now; return; }             // paused while hidden
   const dt = Math.min(3, (now - G.last)/16.7 || 1); G.last = now;
-  if(G.trans){ stepTrans(now); if(!game.open) return; gameDraw(now); }
-  else { gameStep(dt); gameDraw(now); }
-  G.raf = requestAnimationFrame(gameLoop);
+  try{
+    if(G.trans){ stepTrans(performance.now()); if(!game.open) return; gameDraw(now); }
+    else { gameStep(dt); gameDraw(now); }
+  }catch(err){ if(window.console) console.error("bubble game", err); finishClose(); }
 }
+function kickGame(){ if(G.raf) cancelAnimationFrame(G.raf); G.tick = performance.now(); G.raf = requestAnimationFrame(gameLoop); }
+setInterval(()=>{ if(game.open && !document.hidden && performance.now() - (G.tick||0) > 1500) kickGame(); }, 1000);
 const TRANS_MS = 450;
 const easeOut = t => 1 - Math.pow(1 - t, 3);
-// Clip the overlay to a band that grows from the aquarium's rect (e=0) to the full screen (e=1)
+// Where the aquarium is right now (measured live, never cached: fullscreen exit / address bar moves it)
+function aquariumGeom(){
+  let r = null; try{ r = cv.getBoundingClientRect(); }catch(e){}
+  if(!r || !r.height) return { top:0, floorPx:0, ok:false };            // aquarium not laid out (e.g. hidden while typing)
+  return { top:r.top, floorPx:r.top + FLOOR * r.height / H, left:r.left, width:r.width, ok:true };
+}
+// Clip the overlay to a band that grows from the aquarium (e=0) to the full screen (e=1);
+// the sand + crew (canvas) and the control strip slide down together.
 function applyTrans(){
-  const T = G.trans, e = T.e, vh = window.innerHeight || 1;
-  // the control strip rides under the sand: it starts right below the aquarium floor and ends at the screen bottom
-  const lift = T.dy * (1 - e) * G.zoom;                                   // css px (negative = higher on screen)
+  const T = G.trans, e = T.e, aq = aquariumGeom();
+  const dy = aq.floorPx / G.zoom - G.floor;                              // world units the floor sits above its final spot
+  T.dy = dy;
+  const lift = dy * (1 - e) * G.zoom;                                    // css px (negative = higher on screen)
   const st = G.el.querySelector(".bg-strip");
   if(st && st.style) st.style.transform = e >= 1 ? "" : "translateY(" + lift.toFixed(1) + "px)";
-  const top = T.r.top * (1 - e), bottom = Math.max(0, -lift);            // band: aquarium top -> screen top, strip bottom -> screen bottom
+  const top = Math.max(0, aq.top) * (1 - e), bottom = Math.max(0, -lift);
   G.el.style.clipPath = e >= 1 ? "" : "inset(" + top.toFixed(1) + "px 0px " + bottom.toFixed(1) + "px 0px)";
 }
 function stepTrans(now){
-  const T = G.trans, raw = Math.min(1, (now - T.t0) / (reduce ? 1 : TRANS_MS));
+  const T = G.trans;
+  if(T.waitUntil){                                         // closing: wait for fullscreen exit to settle (event, 2 frames, or timeout)
+    T.frames = (T.frames||0) + 1;
+    const settled = !document.fullscreenElement && (T.fsDone || T.frames > 2);
+    if(!settled && now < T.waitUntil){ T.e = 1; applyTrans(); return; }
+    T.waitUntil = 0; T.t0 = now; relayoutGame();
+  }
+  const raw = Math.max(0, Math.min(1, (now - T.t0) / (reduce ? 1 : TRANS_MS)));
   T.e = T.dir > 0 ? easeOut(raw) : 1 - easeOut(raw);
   applyTrans();
   if(raw >= 1){
-    if(T.dir > 0){ G.trans = null; G.el.classList.add("ready"); G.el.style.clipPath = ""; measureNozzles(); }
+    if(T.dir > 0){ G.trans = null; G.el.classList.add("ready"); G.el.style.clipPath = ""; relayoutGame(); }
     else finishClose();
   }
+}
+// Resize the game world to the current viewport and keep the crew inside it
+function relayoutGame(){
+  if(!game.open || !G.cv) return;
+  const ox = G.w || 1, oFloor = G.floor;
+  gameSize(); measureNozzles();
+  G.bodies.forEach(c=>{ c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x / ox * G.w)); c.y = Math.min(c.y + (G.floor - oFloor), G.floor - G_FEET); });
 }
 function measureNozzles(){
   const z = G.zoom;
@@ -1024,49 +1064,79 @@ function measureNozzles(){
   });
 }
 function openGame(){
-  if(game.open) return;
-  G.el = document.getElementById("bubbleGame"); if(!G.el) return;
-  G.cv = G.el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = G.el.querySelector(".bg-hud");
-  game.open = true;
-  hold.id = null; hold.shown = 0; hold.p = 0;
-  document.documentElement.classList.add("bg-lock");
-  G.el.hidden = false; G.el.classList.remove("ready");
-  gameSize(); gameReset(); measureNozzles();
-  G.aim.l = AIM_DEFAULT.l; G.aim.r = AIM_DEFAULT.r;
-  // crew starts exactly where it stands in the aquarium
-  const r = cv.getBoundingClientRect(), z = G.zoom;
-  G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (r.left + (a.x + lastOffFg + SPR_W*S/2) * r.width / W) / z; c.dir = a.dir; });
-  const aqFloor = (r.top + FLOOR * r.height / H) / z;                    // aquarium floor in game world units
-  G.trans = { dir:1, t0:performance.now(), e:0, r:{ top:r.top, bottom:r.bottom }, dy: aqFloor - G.floor };
-  applyTrans();
-  G.last = performance.now(); gameDraw(G.last);
-  try{ const fs = G.el.requestFullscreen && G.el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
-  if(!G.raf) G.raf = requestAnimationFrame(gameLoop);
+  if(game.open || G.opening) return;                       // guard: hold completing while already opening/closing
+  const el = document.getElementById("bubbleGame"); if(!el) return;
+  G.opening = true;
+  try{
+    G.el = el; G.cv = el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = el.querySelector(".bg-hud");
+    game.open = true;
+    hold.id = null; hold.shown = 0; hold.p = 0;
+    document.documentElement.classList.add("bg-lock");
+    el.style.display = ""; el.hidden = false; el.classList.remove("ready");
+    gameSize(); gameReset(); measureNozzles();
+    G.aim.l = AIM_DEFAULT.l; G.aim.r = AIM_DEFAULT.r;
+    // crew starts exactly where it stands in the aquarium
+    const aq = aquariumGeom(), z = G.zoom;
+    if(aq.ok) G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (aq.left + (a.x + lastOffFg + SPR_W*S/2) * aq.width / W) / z; c.dir = a.dir; });
+    G.trans = { dir:1, t0:performance.now(), e:0, dy:0 };
+    applyTrans();
+    G.last = performance.now(); gameDraw(G.last);
+    kickGame();
+    try{ const fs = el.requestFullscreen && el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
+  }catch(err){
+    if(window.console) console.error("openGame", err);
+    finishClose();
+  }finally{ G.opening = false; }
+}
+function releaseJets(){
+  if(!G.el) return;
+  G.el.querySelectorAll(".bg-jet").forEach(btn=>{
+    ["l","r"].forEach(side=>G.held[side].forEach(id=>{ try{ btn.releasePointerCapture && btn.releasePointerCapture(id); }catch(e){} }));
+    btn.classList.remove("on");
+  });
+  G.held.l.clear(); G.held.r.clear(); G.emitAcc.l = G.emitAcc.r = 0;
 }
 function closeGame(){
   if(!game.open || (G.trans && G.trans.dir < 0)) return;
-  G.held.l.clear(); G.held.r.clear();
-  G.el.querySelectorAll(".bg-jet").forEach(b=>b.classList.remove("on"));
+  releaseJets();
   G.el.classList.remove("ready");
-  try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
   // the crew lands, then the floor rises back into the aquarium
   G.bodies.forEach(c=>{ c.y = G.floor - G_FEET; c.vx = c.vy = 0; c.rot = 0; c.say = null; });
-  const r = cv.getBoundingClientRect(), aqFloor = (r.top + FLOOR * r.height / H) / G.zoom;
-  G.trans = { dir:-1, t0:performance.now(), e:1, r:{ top:r.top, bottom:r.bottom }, dy: aqFloor - G.floor };
-  if(!G.raf) G.raf = requestAnimationFrame(gameLoop);
+  const inFs = !!document.fullscreenElement;
+  try{ if(inFs && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
+  // geometry is re-measured every frame; start moving only after fullscreen exit settles
+  G.trans = { dir:-1, t0:performance.now(), e:1, dy:0, waitUntil: performance.now() + (inFs ? 700 : 0) + 34, fsDone: !inFs, frames:0 };
+  kickGame();
 }
 function finishClose(){
-  game.open = false; G.trans = null;
+  game.open = false; G.trans = null; G.opening = false;
   if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
-  G.el.hidden = true; G.el.style.clipPath = "";
+  try{ releaseJets(); }catch(e){}
+  if(G.el){
+    G.el.hidden = true; G.el.style.display = "none"; G.el.style.clipPath = ""; G.el.classList.remove("ready");
+    const st = G.el.querySelector(".bg-strip"); if(st && st.style) st.style.transform = "";
+  }
   document.documentElement.classList.remove("bg-lock");
+  if(document.body && document.body.classList) document.body.classList.remove("bg-lock");
+  try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
+  try{ fitScene(); }catch(e){}
   // hand the crew back to the aquarium at matching x positions
-  const r = cv.getBoundingClientRect();
-  G.bodies.forEach((c,i)=>{ const a = actors[i]; if(!a) return;
-    a.x = Math.max(2, Math.min(W - SPR_W*S - 2, (c.x * G.zoom - r.left) * W / (r.width || 1) - lastOffFg - SPR_W*S/2));
-    a.dir = c.dir; a.state = "walk"; a.t = 0; a.target = null; });
+  try{
+    const aq = aquariumGeom();
+    actors.forEach((a,i)=>{ const c = G.bodies[i];
+      if(c && aq.ok && isFinite(c.x)) a.x = (c.x * G.zoom - aq.left) * W / aq.width - lastOffFg - SPR_W*S/2;
+      if(c) a.dir = c.dir || a.dir; });
+  }catch(err){
+    actors.forEach((a,i)=>{ a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2; });
+  }
+  actors.forEach((a,i)=>{
+    if(!isFinite(a.x)) a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2;
+    a.x = Math.max(2, Math.min(W - SPR_W*S - 2, a.x));
+    a.state = "walk"; a.t = 0; a.target = null; a.say = null; a.sayT = 0; });
   makeSay(pick(actors), pick(["que viagem!","de novo! de novo!","tô todo molhado","uau!"]), 120);
   last = performance.now(); dirty = true;
+  try{ draw(0); drawHold(); }catch(e){}                    // immediate full redraw (also covers reduced motion)
+  kickMain();
 }
 (function wireGame(){
   const el = document.getElementById && document.getElementById("bubbleGame");
@@ -1092,7 +1162,14 @@ function finishClose(){
   });
   el.querySelector(".bg-close").addEventListener("click", closeGame);
   window.addEventListener("keydown", ev=>{ if(ev.key === "Escape" && game.open) closeGame(); });
-  const refit = ()=>{ if(game.open && !G.trans){ const ox = G.w; gameSize(); measureNozzles(); G.bodies.forEach(c=>{ c.x = c.x / ox * G.w; c.y = Math.min(c.y, G.floor - G_FEET); }); } };
-  window.addEventListener("resize", refit);
-  document.addEventListener("fullscreenchange", refit);
+  // Browser-driven fullscreen exits (back gesture, system UI) keep the game open in windowed mode
+  window.addEventListener("resize", ()=>{ if(game.open && !G.trans) relayoutGame(); });
+  const onFs = ()=>{
+    if(!game.open){ fitScene(); dirty = true; kickMain(); return; }
+    if(G.trans && G.trans.dir < 0){ if(!document.fullscreenElement) G.trans.fsDone = true; return; }
+    relayoutGame(); kickGame();
+  };
+  document.addEventListener("fullscreenchange", onFs);
+  document.addEventListener("webkitfullscreenchange", onFs);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ dirty = true; if(game.open) kickGame(); else kickMain(); } });
 })();
