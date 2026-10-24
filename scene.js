@@ -855,6 +855,16 @@ const G = {
 };
 const AIM_MIN = -165*Math.PI/180, AIM_MAX = -15*Math.PI/180, AIM_DEFAULT = { l:-50*Math.PI/180, r:-130*Math.PI/180 };
 const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
+const G_COL_R = SPR_W*S/2 - 2, G_COL_REST = .6, G_COL_ITERS = 4, G_COL_SLOP = .6, G_COL_HIT = 2.2;   // body-body collisions
+const HIT_LINES = ["POF!","ui!","sai!","ai!","opa!"];
+function collideFx(a, b, x, y, speed){
+  a.scared = Math.max(a.scared||0, 40); b.scared = Math.max(b.scared||0, 40); a.rest = b.rest = 0;
+  const who = Math.random() < .5 ? a : b;
+  if(!who.sayT && !(a.sayT && b.sayT)) gSay(who, pick(HIT_LINES), 45);
+  const n = Math.min(6, 2 + Math.floor(speed));
+  for(let i=0;i<n && G.splash.length < 240;i++){ const ang = Math.random()*Math.PI*2, v = 1 + Math.random()*1.5;
+    G.splash.push({ x, y, vx:Math.cos(ang)*v, vy:Math.sin(ang)*v, life:14 + Math.random()*8, c: i%2 ? "#ffe066" : "#f7f5ff", star: true }); }
+}
 for(let i=0;i<G_MAX_BUB;i++) G.pool.push({ on:false, x:0, y:0, vx:0, vy:0, r:5, s:0, ph:0 });
 
 function stripH(){
@@ -898,8 +908,8 @@ function gameStep(dt){
     b.x += (b.vx + Math.sin(b.ph += .15*dt)*.25)*dt; b.y += b.vy*dt;
     if(b.y < 6 || b.x < -12 || b.x > G.w + 12) gPop(b, false);
   }
-  // bodies
-  let air = 0;
+  // bodies: 1) bubble pushes + integrate + world bounds
+  const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
   G.bodies.forEach((c, ci)=>{
     const bit = 1 << ci;
     for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
@@ -911,28 +921,76 @@ function gameStep(dt){
         b.hits |= bit; b.vx *= .8; b.vy *= .8;             // keeps flying, can hit the next character
         if(G.splash.length < 220) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*1.6, vy:-.6, life:10 });
         b.n = (b.n||0) + 1; if(b.n >= 3) gPop(b, true);
+        c.rest = 0;
       }
     }
     c.vy += G_GRAV*dt; c.vx *= Math.pow(G_DRAG, dt); c.vy *= Math.pow(G_DRAG, dt);
     c.vx = Math.max(-9, Math.min(9, c.vx)); c.vy = Math.max(-10, Math.min(8, c.vy));
     c.x += c.vx*dt; c.y += c.vy*dt;
-    const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
+    c.wasAir = c.air; c.support = false; c.side = 0;
     if(c.y >= ground){
       if(c.air && c.vy > 3.2) gSay(c, pick(["ai!","ui!","tum!","ai ai ai"]), 60);
-      c.y = ground; c.vy = c.vy > 1.2 ? -c.vy*.35 : 0; c.vx *= .85;
+      c.y = ground; c.vy = c.vy > 1.2 ? -c.vy*.35 : 0; c.vx *= .85; c.support = true;
     }
     if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; c.dizzy = 150; if(!c.sayT) gSay(c, pick(["bati a cabeça!","ploc!","tô vendo estrelas"]), 70); }
     if(c.x < G_BODY_R){ c.x = G_BODY_R; c.vx = Math.abs(c.vx)*.6; }
     if(c.x > G.w - G_BODY_R){ c.x = G.w - G_BODY_R; c.vx = -Math.abs(c.vx)*.6; }
-    c.air = c.y < ground - 3 || Math.abs(c.vy) > .4;
+  });
+  // 2) body-body collisions: equal-mass circles, positional correction + restitution impulse, a few passes for stacks
+  const B = G.bodies, R2 = G_COL_R*2;
+  for(let it=0; it<G_COL_ITERS; it++){
+    for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++){
+      const a = B[i], b = B[j];
+      let dx = b.x - a.x, dy = b.y - a.y; const d2 = dx*dx + dy*dy;
+      if(d2 >= R2*R2) continue;
+      let d = Math.sqrt(d2); if(d < .001){ dx = (i%2?1:-1)*.01; dy = -.01; d = .0141; }
+      const nx = dx/d, ny = dy/d, pen = R2 - d;
+      // positional correction (split, with a little slop so resting piles don't buzz); floor-supported bodies don't sink
+      const corr = Math.max(0, pen - G_COL_SLOP) * .8;
+      if(corr > 0){
+        const aFix = a.support && ny < 0, bFix = b.support && ny > 0;
+        const wa = aFix ? 0 : (bFix ? 1 : .5), wb = bFix ? 0 : (aFix ? 1 : .5);
+        a.x -= nx*corr*wa; a.y -= ny*corr*wa; b.x += nx*corr*wb; b.y += ny*corr*wb;
+        if(b.y > ground){ b.y = ground; } if(a.y > ground){ a.y = ground; }
+      }
+      // whoever is on top is "supported" by the one below
+      if(ny > .45 && (b.support || b.y >= ground - 1)) a.support = true;
+      if(ny < -.45 && (a.support || a.y >= ground - 1)) b.support = true;
+      if(Math.abs(ny) < .45){ a.side = -Math.sign(nx) || 1; b.side = Math.sign(nx) || 1; }
+      // impulse only when approaching
+      const vn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
+      if(vn >= 0) continue;
+      const imp = -(1 + G_COL_REST) * vn / 2;
+      a.vx -= imp*nx; a.vy -= imp*ny; b.vx += imp*nx; b.vy += imp*ny;
+      // tangential friction keeps piles from sliding forever
+      const tx = -ny, ty = nx, vt = (b.vx - a.vx)*tx + (b.vy - a.vy)*ty, f = vt * .15;
+      a.vx += f*tx; a.vy += f*ty; b.vx -= f*tx; b.vy -= f*ty;
+      if(it === 0 && -vn > G_COL_HIT){ collideFx(a, b, a.x + nx*G_COL_R, a.y + ny*G_COL_R, -vn); }
+    }
+    B.forEach(c=>{ if(c.y > ground) c.y = ground; if(c.x < G_BODY_R) c.x = G_BODY_R; if(c.x > G.w - G_BODY_R) c.x = G.w - G_BODY_R; });
+  }
+  // 3) post: resting detection (no jitter), faces, walking, stats
+  let air = 0;
+  B.forEach(c=>{
+    if(c.support){
+      // floor/pile friction + sleep tiny motion so stacks stay still
+      c.vx *= .86;
+      if(Math.abs(c.vy) < .6) c.vy = 0;
+      if(Math.abs(c.vx) < .05) c.vx = 0;
+      c.rest = Math.min(30, (c.rest||0) + dt);
+    } else c.rest = 0;
+    c.air = !c.support && (c.y < ground - 3 || Math.abs(c.vy) > .4);
     if(c.air){ air++; c.rot += (c.vx*.012)*dt; const h = ground - c.y; if(h > c.peak) c.peak = h; }
     else {
       c.rot *= .8; if(Math.abs(c.rot) < .05) c.rot = 0;
       c.wander -= dt; if(c.wander < 0){ c.wander = 90 + Math.random()*200; c.dir = Math.random()<.5?1:-1; }
-      if(c.dizzy <= 0 && Math.abs(c.vx) < .5){ c.x += c.dir*.35*dt; c.dist += .35*dt; }
+      if(c.side && c.side === c.dir) c.dir = -c.dir;           // bumped into a neighbour: turn around
+      const onFloor = c.y >= ground - 1;
+      if(onFloor && c.dizzy <= 0 && c.scared <= 0 && Math.abs(c.vx) < .5){ c.x += c.dir*.35*dt; c.dist += .35*dt; }
     }
     if(Math.abs(c.vx) > .2) c.dir = c.vx > 0 ? 1 : -1;
-    c.dizzy = Math.max(0, c.dizzy - dt); c.blinkT -= dt; if(c.blinkT < -7) c.blinkT = 90 + Math.random()*220;
+    c.dizzy = Math.max(0, c.dizzy - dt); c.scared = Math.max(0, (c.scared||0) - dt);
+    c.blinkT -= dt; if(c.blinkT < -7) c.blinkT = 90 + Math.random()*220;
     if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
     const meters = (ground - c.y) / (SPR_W*S) * .5;
     if(meters > G.best) G.best = meters;
@@ -976,7 +1034,8 @@ function gameDraw(now){
   G.bodies.forEach(c=>{
     const sp = SPR[c.name] || SPR.octo, speed = Math.hypot(c.vx, c.vy);
     let fr;
-    if(c.dizzy > 0 && !c.air) fr = sp.blink;
+    if(c.scared > 0) fr = sp.wide;                                                                       // just got bonked
+    else if(c.dizzy > 0 && !c.air) fr = sp.blink;
     else if(c.air && speed > 2.4) fr = Math.floor(tm/90)%2 ? sp.wide : sp.walk[1+Math.floor(tm/180)%2];   // flailing
     else if(c.air) fr = sp.happy;                                                                       // floating gently
     else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
@@ -992,7 +1051,8 @@ function gameDraw(now){
   k.restore();
   // bubbles + splashes
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
-  k.fillStyle = "#bfe8ff"; G.splash.forEach(f=>k.fillRect(Math.round(f.x/S)*S, Math.round(f.y/S)*S, S, S));
+  G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
+    if(f.star) drawStar(x, y, f.c, k); else { k.fillStyle = "#bfe8ff"; k.fillRect(x, y, S, S); } });
   heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
   // HUD text lives in the DOM (crisp pixel font); update only when it changes
   const txt = "altura máxima: " + G.best.toFixed(1).replace(".", ",") + " m · bonequinhos no ar: " + G.airborne;
