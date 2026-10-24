@@ -144,7 +144,7 @@ if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
 $("#btnResume").addEventListener("click", ()=>startHost(savedHost));
 $("#btnHost").addEventListener("click", ()=>startHost(null));
 async function startHost(saved){
-  if(saved){ Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
+  if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
   else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
   try{ await openHost(host.code, {
@@ -159,7 +159,7 @@ async function startHost(saved){
       broadcastTeams(); if(host.phase!=="lobby") sendCurrentState();
     },
     answer: p => {
-      if(host.phase!=="question" || p.idx!==host.idx || !host.teams[p.id]?.ok) return;
+      if((host.phase!=="question" && host.phase!=="paused") || p.idx!==host.idx || !host.teams[p.id]?.ok) return;
       const first = host.answers[p.id]==null;
       host.answers[p.id] = String(p.text||"").slice(0,80);
       renderHostAnswers(); saveHost();
@@ -246,7 +246,7 @@ function loadQuestionView(){
   $("#hqTheme").textContent=item.theme + (["","  ·  fácil","  ·  médio","  ·  difícil"][qLevel(item.q)]||""); $("#hqText").textContent=text;
   $("#hCorrect").textContent = correct;
   $("#hClock").textContent=host.secs+"s"; $("#hClock").classList.remove("warn"); $("#htbar").style.width="100%"; $("#htbar").classList.remove("warn");
-  $("#btnPlay").hidden=false; $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
+  setPlayButton("play"); $("#hClock").classList.remove("paused"); $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
   renderHostAnswers();
 }
 function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:Math.max(0,Math.ceil((host.endsAt-Date.now())/1000)), teams:host.teams }; }
@@ -269,15 +269,33 @@ function autoOk(answer, correct, alts){
 function sendCurrentState(){
   if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length, scores:scoreList() });
   else if(host.phase==="question") send("question", questionPayload());
+  else if(host.phase==="paused") send("pause",{ idx:host.idx, left:host.left });
   else if(host.phase==="reveal") send("reveal", revealPayload());
   else if(host.phase==="end") send("end", { scores: scoreList() });
 }
+function setPlayButton(mode){ // "play" | "running" | "paused"
+  const b=$("#btnPlay"); b.hidden=false; b.className="btn primary play "+(mode==="play"?"":mode);
+  const icon = mode==="running" ? '<svg viewBox="0 0 12 12" width="34" height="34" aria-hidden="true"><path d="M2 1h3v10H2zM7 1h3v10H7z" fill="currentColor"/></svg>' : '<svg viewBox="0 0 12 12" width="34" height="34" aria-hidden="true"><path d="M3 1h2v2h2v2h2v2H7v2H5v2H3z" fill="currentColor"/></svg>';
+  const label = mode==="running" ? "PAUSAR<small>para o tempo em todos os celulares</small>" : mode==="paused" ? "CONTINUAR<small>o tempo volta a correr pra todo mundo</small>" : "PLAY<small>libera a pergunta e o tempo pra todo mundo</small>";
+  b.innerHTML = icon+"<span>"+label+"</span>";
+}
 $("#btnPlay").addEventListener("click", ()=>{
-  host.phase="question"; host.left=host.secs; host.endsAt=Date.now()+host.secs*1000; $("#btnPlay").hidden=true; $("#btnReveal").hidden=false;
-  $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · valendo!`;
-  send("question", questionPayload());
-  host.timer=setInterval(tick,250);
-  makeSay(pick(actors), "VALENDO!", 90);
+  if(host.phase==="ready"){
+    host.phase="question"; host.left=host.secs; host.endsAt=Date.now()+host.secs*1000; $("#btnReveal").hidden=false;
+    $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · valendo!`;
+    send("question", questionPayload());
+    host.timer=setInterval(tick,250); setPlayButton("running");
+    makeSay(pick(actors), "VALENDO!", 90);
+  } else if(host.phase==="question"){
+    host.phase="paused"; stopTimer(); host.left=Math.max(0,Math.ceil((host.endsAt-Date.now())/1000));
+    $("#hClock").textContent=host.left+"s · pausado"; $("#hClock").classList.add("paused");
+    send("pause",{ idx:host.idx, left:host.left }); setPlayButton("paused"); saveHost();
+    makeSay(pick(actors), "pausa pra pensar...", 120);
+  } else if(host.phase==="paused"){
+    host.phase="question"; host.endsAt=Date.now()+host.left*1000; $("#hClock").classList.remove("paused");
+    send("question", questionPayload()); host.timer=setInterval(tick,250); setPlayButton("running");
+    makeSay(pick(actors), "VALENDO de novo!", 90);
+  }
 });
 function stopTimer(){ if(host.timer){ clearInterval(host.timer); host.timer=null; } }
 function tick(){
@@ -309,7 +327,7 @@ function revealPayload(){
 }
 function scoreList(){ return playing().map(([id,t])=>({id,team:t.name,color:t.color,score:t.score})).sort((a,b)=>b.score-a.score); }
 function reveal(){
-  if(host.phase!=="question") return;
+  if(host.phase!=="question" && host.phase!=="paused") return;
   stopTimer(); host.phase="reveal";
   const it=host.deck[host.idx];
   playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct, qAlts(it.q)); });
@@ -325,7 +343,7 @@ function revealView(){
   $("#hClock").textContent="TEMPO!"; $("#htbar").style.width="0%";
   renderHostAnswers();
 }
-$("#btnReveal").addEventListener("click", ()=>{ host.endsAt=Date.now(); tick(); });
+$("#btnReveal").addEventListener("click", ()=>{ host.endsAt=Date.now(); host.phase="question"; tick(); });
 $("#btnNext").addEventListener("click", ()=>{
   playing().forEach(([id,t])=>{ if(host.marks[id]) t.score++; });
   send("reveal", revealPayload()); saveHost();
@@ -362,6 +380,7 @@ async function joinRoom(code){
     ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores(p.scores); show("playerWait"); },
     question: p => { if(p.teams) applyTeams(p.teams); if(player.me?.ok) playerQuestion(p); },
     tick: p => { if(p.idx!==player.idx) return; startCountdown(p.left); },
+    pause: p => { if(p.idx!==player.idx) return; stopCountdown(); const c=$("#pClock"); c.textContent=p.left+"s · pausado"; c.classList.add("paused"); c.classList.remove("warn"); $("#ptbar").classList.remove("warn"); makeSay(pick(actors),"pausa!",100); },
     reveal: p => playerReveal(p),
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
     lobby: () => { player.idx=-1; waitLobby(); },
@@ -407,7 +426,7 @@ function startCountdown(left){
 }
 function stopCountdown(){ if(player.cd){ clearInterval(player.cd); player.cd=null; } }
 function setPlayerClock(left, running){
-  const c=$("#pClock"); const warn=left<=5 && running;
+  const c=$("#pClock"); c.classList.remove("paused"); const warn=left<=5 && running;
   c.textContent = running ? (left<=0?"TEMPO!":left+"s") : "";
   c.classList.toggle("warn",warn);
   $("#ptbar").style.width = (running? left/Math.max(1,player.secs)*100 : 100)+"%"; $("#ptbar").classList.toggle("warn",warn);

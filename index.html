@@ -15,6 +15,7 @@
   color-scheme:dark;
 }
 html,body{overflow-x:hidden;max-width:100%}
+[hidden]{display:none!important}
 *{box-sizing:border-box;min-width:0;font-variant-ligatures:none;font-feature-settings:"liga" 0,"clig" 0}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:20px;line-height:1.35;margin:0;
   padding-block:0 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
@@ -82,8 +83,11 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row .btn{flex:1 1 140px}
 .stack{display:flex;flex-direction:column;gap:20px}
-.btn.play{display:flex;align-items:center;justify-content:center;gap:16px;padding:22px 20px;font-size:22px;background:var(--good);border-color:#1f8a52;color:#04210f;box-shadow:5px 5px 0 #000;animation:pulse 1.4s ease-in-out infinite}
+.btn.play{display:flex;width:100%;align-items:center;justify-content:center;gap:16px;padding:22px 20px;font-size:22px;background:var(--good);border-color:#1f8a52;color:#04210f;box-shadow:5px 5px 0 #000;animation:pulse 1.4s ease-in-out infinite}
 .btn.play span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.1}
+.btn.play.paused{background:var(--accent);border-color:#a37d00;color:var(--accent-fg);animation:none}
+.btn.play.running{background:#ffcf3f;border-color:#a37d00;color:#1a1200;animation:none}
+.clock.paused{color:var(--accent)}
 .btn.play small{font-family:var(--body);font-weight:700;font-size:14px;margin-top:6px;opacity:.85}
 .btn.play svg{flex:0 0 auto;image-rendering:pixelated}
 @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
