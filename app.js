@@ -99,6 +99,10 @@ function send(ev, payload){
 }
 const params = new URLSearchParams(location.search);
 
+// Entry shape: [question, answer, ...alts, level]; custom (host-made) entries have no level and count as every level.
+const qLevel = q => (typeof q[q.length-1]==="number") ? q[q.length-1] : 0;
+const qAlts = q => q.slice(2).filter(x=>typeof x==="string");
+
 // ======================= CUSTOM QUESTIONS (made by the host, saved on this device) =======================
 const CUSTOM_THEME = "Perguntas da família";
 const CUSTOM_KEY = "quiz.custom";
@@ -127,11 +131,11 @@ $("#addCustom").addEventListener("click", ()=>{
 syncCustom();
 
 // ======================= HOST =======================
-const host = { code:null, teams:{}, themes:[], count:15, secs:30, deck:[], idx:0, answers:{}, timer:null, left:0, phase:"lobby" };
+const host = { code:null, teams:{}, themes:[], count:15, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, timer:null, left:0, phase:"lobby" };
 const playing = () => Object.entries(host.teams).filter(([,t])=>t.ok);
 
 const HOST_KEY="quiz.host";
-function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, deck:host.deck, idx:host.idx, answers:host.answers, marks:host.marks, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
+function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, levels:host.levels, deck:host.deck, idx:host.idx, answers:host.answers, marks:host.marks, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
 function clearHost(){ store(HOST_KEY, undefined); }
 const savedHost = load(HOST_KEY);
 if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
@@ -140,7 +144,7 @@ if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
 $("#btnResume").addEventListener("click", ()=>startHost(savedHost));
 $("#btnHost").addEventListener("click", ()=>startHost(null));
 async function startHost(saved){
-  if(saved){ Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
+  if(saved){ Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
   else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
   try{ await openHost(host.code, {
@@ -169,6 +173,7 @@ async function startHost(saved){
   renderThemes(); renderTeamList(); renderCustom();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
+  renderLevels();
   if(saved && host.deck.length && host.phase!=="lobby"){
     if(host.phase==="end") hostEnd();
     else if(host.phase==="reveal"){ show("hostGame"); loadQuestionView(); host.phase="reveal"; revealView(); }
@@ -201,6 +206,14 @@ function renderThemes(){
 }
 $("#mixAll").addEventListener("click", ()=>{ const all=Object.keys(BANK); host.themes = host.themes.length===all.length ? [] : all.slice(); renderThemes(); });
 $("#count").addEventListener("click", e=>{ const b=e.target.closest("button[data-n]"); if(!b) return; host.count=+b.dataset.n; saveHost(); $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+$("#level").addEventListener("click", e=>{
+  const b=e.target.closest("button[data-l]"); if(!b) return;
+  const l=b.dataset.l;
+  if(l==="all") host.levels=[1,2,3];
+  else { const v=+l; host.levels = host.levels.includes(v) ? host.levels.filter(x=>x!==v) : [...host.levels, v]; if(!host.levels.length) host.levels=[v]; }
+  renderLevels(); saveHost();
+});
+function renderLevels(){ $("#level").querySelectorAll("button[data-l]").forEach(x=>{ const l=x.dataset.l; x.setAttribute("aria-pressed", l==="all" ? host.levels.length===3 : host.levels.includes(+l)); }); }
 $("#timer").addEventListener("click", e=>{ const b=e.target.closest("button[data-t]"); if(!b) return; host.secs=+b.dataset.t; saveHost(); $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
 $("#copyUrl").addEventListener("click", async ()=>{
   const t=$("#joinUrl").textContent;
@@ -212,7 +225,8 @@ $("#btnStart").addEventListener("click", ()=>{
   if(!host.themes.length) return msg("#lobbyMsg","Escolhe pelo menos um tema (ou mistura tudo).");
   if(!playing().length) return msg("#lobbyMsg","Confirma pelo menos uma equipe.");
   msg("#lobbyMsg","");
-  const pool=[]; host.themes.forEach(t=>BANK[t].forEach(q=>pool.push({theme:t,q}))); shuffle(pool);
+  const pool=[]; host.themes.forEach(t=>BANK[t].forEach(q=>{ const l=qLevel(q); if(l===0 || host.levels.includes(l)) pool.push({theme:t,q}); })); shuffle(pool);
+  if(!pool.length) return msg("#lobbyMsg","Nenhuma pergunta com essa combinação de temas e dificuldade.");
   host.deck=[]; while(host.deck.length<host.count) host.deck.push(...pool); host.deck=host.deck.slice(0,host.count);
   Object.values(host.teams).forEach(t=>t.score=0);
   host.idx=0; show("hostGame"); loadQuestion();
@@ -227,7 +241,7 @@ function loadQuestion(){
 function loadQuestionView(){
   const item=host.deck[host.idx]; const [text,correct]=item.q; item.correct=correct;
   $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · só você vê. Dá play quando quiser.`;
-  $("#hqTheme").textContent=item.theme; $("#hqText").textContent=text;
+  $("#hqTheme").textContent=item.theme + (["","  ·  fácil","  ·  médio","  ·  difícil"][qLevel(item.q)]||""); $("#hqText").textContent=text;
   $("#hCorrect").textContent = correct;
   $("#hClock").textContent=host.secs+"s"; $("#hClock").classList.remove("warn"); $("#htbar").style.width="100%"; $("#htbar").classList.remove("warn");
   $("#btnPlay").hidden=false; $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
@@ -296,7 +310,7 @@ function reveal(){
   if(host.phase!=="question") return;
   stopTimer(); host.phase="reveal";
   const it=host.deck[host.idx];
-  playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct, it.q.slice(2)); });
+  playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct, qAlts(it.q)); });
   host.marks = {...host.marks};
   const anyOk=Object.values(host.marks).some(Boolean);
   revealView(); sceneReact(anyOk);
