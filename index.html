@@ -281,7 +281,18 @@ textarea:focus-visible{outline:3px solid var(--accent)}
 </main>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="scene.js"></script>
-<script src="bank.js"></script>
+<script>const BANK_PARTS=[];</script>
+<script src="bank/geografia.js"></script>
+<script src="bank/historia.js"></script>
+<script src="bank/ciencia.js"></script>
+<script src="bank/esportes.js"></script>
+<script src="bank/musica.js"></script>
+<script src="bank/brasil.js"></script>
+<script src="bank/comida.js"></script>
+<script src="bank/animais.js"></script>
+<script src="bank/cinema.js"></script>
+<script src="bank/tecnologia.js"></script>
+<script>const BANK={}; BANK_PARTS.forEach(p=>{ BANK[p.theme]=p.items; });</script>
 <script src="app.js"></script>
 </body>
 </html>
