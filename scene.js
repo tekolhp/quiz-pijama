@@ -17,6 +17,7 @@ const P = {
   b1:"#58b4ff", b2:"#2b66c2", n1:"#2c3c84",   // pajama blue + navy stripe
   or:"#ff9a3c", yl:"#ffe066",                 // flame / feet / stars
   s1:"#e8edff", s2:"#a5afd8",                 // bedsheet
+  t1:"#5fdcbc", t2:"#2a958a", t3:"#bdf7e8",   // starfish (mint/teal)
 };
 
 const JOKES = [
@@ -228,6 +229,32 @@ const BUILD = {
     px(g,7,12,P.pk); px(g,17,12,P.pk);
   },
 };
+// Mint starfish in a yellow-and-white striped nightgown and nightcap, sleepy half-lidded eyes
+BUILD.star = function(g,f,e){
+  const ll = f===1 ? -2 : 0, rl = f===2 ? -2 : 0;     // lifted leg per walk frame
+  const pts = [[12,2],[14.2,7.5],[21.5,8.5],[16,12.5],[18+(f===2?1:0),21+rl],[12,16.5],[6-(f===1?1:0),21+ll],[8,12.5],[2.5,8.5],[9.8,7.5]];
+  poly(g,pts,P.t2);
+  recolor(g,(c,x,y)=> (c===P.t2 && get(g,x+1,y+1)===P.t2 && get(g,x+1,y)===P.t2) ? P.t1 : undefined);
+  [[5,9],[19,9],[8,18],[16,18]].forEach(([x,y])=>{ if(get(g,x,y)) px(g,x,y,P.t3); });
+  // nightgown: trapezoid with horizontal stripes, arms and legs poke out
+  const hem=[0,1,-1][f];
+  poly(g,[[8.5,11],[15.5,11],[17.5,19+hem],[6.5,19-hem]],P.yl);
+  recolor(g,(c,x,y)=> (c===P.yl && y>=11) ? ((y>>1)%2 ? P.W : (x>=15 ? P.y2 : P.yl)) : undefined);
+  rect(g,9,11,6,1,P.W); px(g,12,12,P.pk);
+  // nightcap flopping to the right, white brim and pompom
+  poly(g,[[8,6.2],[16,6.2],[13.5,1],[10.5,1.2]],P.yl);
+  poly(g,[[12.5,1.5],[19,3],[18,5],[14,4.5]],P.y2);
+  rect(g,8,5,9,2,P.W); rect(g,8,6,9,1,P.w);
+  ell(g,19.5,4,1.6,1.6,P.W); px(g,20,5,P.w);
+  // face
+  [9,14].forEach(x=>{
+    if(e==="open"){ rect(g,x,8,2,1,P.t2); rect(g,x,9,2,1,P.K); }
+    else if(e==="wide"){ rect(g,x,8,2,2,P.W); px(g,x+1,9,P.K); }
+    else eye(g,x,7,e);
+  });
+  px(g,7,10,P.pk); px(g,17,10,P.pk);
+  if(e==="happy"){ rect(g,11,10,3,1,P.K); } else if(e==="wide"){ px(g,12,10,P.K); } else { px(g,11,10,P.K); px(g,12,10,P.K); }
+};
 const HOVER = { puffer:3, jelly:2, ghost:1 };   // floaters hover above the sand
 
 // Prerender every frame of every character (right + left) once
@@ -365,7 +392,7 @@ function mkActor(name, x){
   return { name, x, y: FLOOR - SPR_W*S, dir: Math.random()<.5?1:-1, speed: .3+Math.random()*.35,
     state:"walk", t:0, say:null, sayT:0, bob:Math.random()*10, dist:Math.random()*30, blinkT:60+Math.random()*200, target:null };
 }
-["octo","puffer","horse","jelly","crab","ghost"].forEach((n,i)=>actors.push(mkActor(n, 30+i*58)));
+["octo","puffer","horse","jelly","crab","ghost","star"].forEach((n,i)=>actors.push(mkActor(n, 30+i*58)));
 
 let weeds = [], fx = [], bubbles = [], props = [], school = null, schoolCool = 240, gagCool = 420 + Math.random()*300;
 function layoutWeeds(){

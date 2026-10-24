@@ -15,7 +15,7 @@ const CREW = [
   { name:"Ostra",          color:"#b8f0e0", sprite:"jelly" },
   { name:"Lula Roxa",      color:"#c77dff", sprite:"octo" },
   { name:"Peixe-Palhaço",  color:"#ff8c42", sprite:"puffer" },
-  { name:"Estrelinha",     color:"#ffe08a", sprite:"jelly" },
+  { name:"Estrelinha",     color:"#7fe0c8", sprite:"star" },
 ];
 
 const $ = s => document.querySelector(s);
