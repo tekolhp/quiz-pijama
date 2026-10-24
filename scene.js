@@ -35,6 +35,12 @@ const PILLOW_LINES = ["guerra de travesseiro!","toma essa!","em guarda!"];
 const PILLOW_HITS = ["POF!","PAF!","TUM!","AI!","FLOP!"];
 const PRANK_SCARED = ["AAAAH!","SOCORRO!","MÃE!!","que susto!"];
 const PRANK_LAUGH = ["HAHAHA!","pegadinha!","caiu!","hihihi"];
+const YELP_LINES = ["AI!","ui!","me solta!","ei!","cócegas não!"];
+const FLEE_LINES = ["socorro!","fuuui!","não me pega!","tchau!"];
+const DIZZY_LINES = ["tô vendo estrelas...","onde eu tô?","uooou..."];
+const DANCE_LINES = ["lá lá lá!","dancinha!","olha o passinho!","tchu tcha!"];
+const HIDE_LINES = ["AAAH! me esconde!","não tô aqui!","shhh, sou um lençol"];
+const PANIC_LINES = ["CORRE!!","AAAAH!","SALVE-SE QUEM PUDER!","MÃÃÃE!"];
 const JOLT_LINES = ["não tava dormindo!","quem? eu? acordadíssimo!","tô de olho!","só piscando devagar..."];
 
 // ---------- canvas & world ----------
@@ -526,6 +532,15 @@ function stepActor(a, dt){
       if(a.t>320){ a.state="walk"; if(Math.random()<.4) makeSay(a,"já é de manhã?",100); }
       break;
     case "jump": if(a.t>60){ a.state="walk"; } break;
+    case "yelp": if(a.t>45){ a.state="walk"; } break;
+    case "flee": moveActor(a, 2.6, dt); if(a.t>90){ a.state="walk"; a.speed=.3+Math.random()*.35; } break;
+    case "dizzy":
+      if(a.t<95 && Math.floor(a.t/30)!==Math.floor((a.t-dt)/30)) fx.push({ x:a.x+SPR_W*S/2-6, y:FLOOR-30, vx:0, vy:-.5, life:40, c:P.yl, kind:"star" });
+      if(a.t>130){ a.state="walk"; }
+      break;
+    case "dance": if(a.t>100){ a.state="walk"; } break;
+    case "hide": if(a.t>110){ a.state="idle"; a.t=60; makeSay(a,"já foi?",70); } break;
+    case "look": if(a.t>70){ a.state="walk"; } break;
     default: a.state="walk";
   }
 }
@@ -536,6 +551,14 @@ function poseOf(a){
   let fr = sp.walk[0], dy = 0, dx = 0;
   const still = reduce;
   if(st==="sleep") return { fr:sp.lie, dy:0, dx:0, lie:true };
+  if(st==="dizzy"){
+    if(a.t<100) return { fr:sp.lie, dy:0, dx:0, lie:true, noPillow:true, dizzy:true };
+    return { fr:sp.blink, dy:still?0:Math.round(Math.sin(a.t/3)), dx:still?0:Math.round(Math.sin(a.t/4)), lie:false };
+  }
+  if(st==="yelp"){ fr=sp.wide; if(!still) dy=-Math.round(Math.abs(Math.sin(a.t/45*Math.PI))*14); return { fr, dy, dx, lie:false }; }
+  if(st==="dance"){ fr=sp.happy; if(!still){ dy=-(Math.floor(a.t/6)%2)*3; } return { fr, dy, dx, lie:false, spin: !still && Math.floor(a.t/8)%2 }; }
+  if(st==="hide") return { fr:sp.wide, dy:0, dx:still?0:(Math.floor(a.t/4)%2), lie:false, hide:true };
+  if(st==="flee"){ const step=Math.floor(a.dist/5)%4; return { fr: still?sp.wide:[sp.wide,sp.walk[1],sp.wide,sp.walk[2]][step], dy: still?0:(step%2?-2:0), dx, lie:false }; }
   if(st==="jump"){ fr=sp.happy; if(!still) dy=-Math.round(Math.abs(Math.sin(a.t/60*Math.PI))*12); }
   else if(st==="laugh"){ fr=sp.happy; if(!still) dy=-(Math.floor(a.t/5)%2); }
   else if(st==="scared"){ fr=sp.wide; if(!still) dy=-Math.round(Math.abs(Math.sin(a.t/55*Math.PI))*16); }
@@ -552,6 +575,7 @@ function poseOf(a){
   return { fr, dy, dx, lie:false };
 }
 function tileRow(img, off, y){ const w=img.width; let x=((off%w)+w)%w - w; for(; x<W; x+=w) ctx.drawImage(img, x, y||0); }
+function drawStar(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x+S,y,S,3*S); ctx.fillRect(x,y+S,3*S,S); }
 function drawZ(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x,y,3*S,S); ctx.fillRect(x+S,y+S,S,S); ctx.fillRect(x,y+2*S,3*S,S); }
 function bubbleText(text, x, y, taken){
   ctx.font = "13px 'Pixelify Sans', monospace";
@@ -573,6 +597,7 @@ function draw(now){
   const tm = reduce ? 0 : now;
   const sw = reduce ? 0 : Math.sin(tm/6500);
   const offFar = Math.round(sw*1)*S, offMid = Math.round(sw*3)*S - 40, offFg = Math.round(sw*6)*S;
+  lastOffFg = offFg;
   // far water + rays
   tileRow(BG.far, offFar);
   ctx.save(); ctx.globalCompositeOperation = "lighter";
@@ -610,16 +635,22 @@ function draw(now){
   // actors
   const heads = [];
   actors.forEach(a=>{
-    const p = poseOf(a), side = a.dir<0 ? "l" : "r", hov = p.lie ? 0 : (HOVER[a.name]||0);
+    const p = poseOf(a), hov = p.lie ? 0 : (HOVER[a.name]||0);
+    const side = (a.dir<0) !== !!p.spin ? "l" : "r";
     const x = Math.round(a.x/S)*S + offFg + p.dx*S;
     const y = FLOOR + S - (p.fr.b+1)*S - hov*S + p.dy*S;
     const lift = Math.max(0, -p.dy) + hov;
     ctx.globalAlpha = Math.max(.25, 1 - lift/20); ctx.drawImage(PROP.shadow, x + 4*S, FLOOR + S); ctx.globalAlpha = 1;
-    if(p.lie) ctx.drawImage(PROP.pillow, a.dir<0 ? x - 2*S : x + 13*S, FLOOR - 7*S);
-    if(a.state==="sneak") ctx.drawImage(PROP.sheet[side], x, y - S + (reduce?0:-Math.round(Math.abs(Math.sin(a.t/9))*2)*S));
+    if(p.lie && !p.noPillow) ctx.drawImage(PROP.pillow, a.dir<0 ? x - 2*S : x + 13*S, FLOOR - 7*S);
+    if(p.hide) ctx.drawImage(PROP.sheet[side], x, FLOOR + S - 22*S + p.dy*S);
+    else if(a.state==="sneak") ctx.drawImage(PROP.sheet[side], x, y - S + (reduce?0:-Math.round(Math.abs(Math.sin(a.t/9))*2)*S));
     else ctx.drawImage(p.fr[side], x, y);
     if(a.state==="fight"){ const up = Math.floor(a.t/8)%2; ctx.drawImage(PROP.pillow, x + (a.dir>0 ? 15*S : -4*S), y + (up ? 3 : 9)*S); }
-    heads.push([a, x + SPR_W*S/2, p.lie ? FLOOR - 12*S : y + 2*S]);
+    if(p.dizzy){ // stars circling over the dazed head
+      const cx = x + SPR_W*S/2, cy = FLOOR - 15*S;
+      for(let k=0;k<3;k++){ const ang = tm/180 + k*2.094; drawStar(Math.round((cx + Math.cos(ang)*9*S)/S)*S, Math.round((cy + Math.sin(ang)*3*S)/S)*S, k%2?P.W:P.yl); }
+    }
+    heads.push([a, x + SPR_W*S/2, p.lie ? FLOOR - 12*S : (p.hide ? FLOOR - 21*S : y + 2*S)]);
   });
   weeds.forEach(wd=>{ if(wd.front) drawWeed(wd); });
   // bubbles
@@ -627,6 +658,7 @@ function draw(now){
   // fx: confetti, feathers, Zs
   fx.forEach(f=>{
     if(f.kind==="z"){ drawZ(Math.round(f.x/S)*S, Math.round(f.y/S)*S, f.c); return; }
+    if(f.kind==="star"){ drawStar(Math.round(f.x/S)*S, Math.round(f.y/S)*S, f.c); return; }
     ctx.fillStyle = f.c; ctx.fillRect(Math.round(f.x/S)*S, Math.round(f.y/S)*S, f.kind==="feather"?2*S:S*1.5, S);
   });
   // speech bubbles on top
@@ -657,7 +689,7 @@ function update(dt, now){
   fx = fx.filter(f=>(f.life-=dt)>0);
   fx.forEach(f=>{
     if(f.kind==="feather"){ f.x += (f.vx + Math.sin(f.life/8)*.4)*dt; f.y += f.vy*dt; f.vy = Math.min(.5, f.vy+.03*dt); }
-    else if(f.kind==="z"){ f.x += (f.vx + Math.sin(f.life/10)*.2)*dt; f.y += f.vy*dt; }
+    else if(f.kind==="z"||f.kind==="star"){ f.x += (f.vx + Math.sin(f.life/10)*.2)*dt; f.y += f.vy*dt; }
     else { f.x += f.vx*dt; f.y += f.vy*dt; f.vy += .05*dt; }
   });
   props = props.filter(p=>(p.life-=dt)>0);
@@ -673,6 +705,67 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// ---------- pointer interaction ----------
+let lastOffFg = 0, tapTimes = [];
+const REACT_GAP = 400;                       // ms: at most one tap reaction per actor in this window
+const TAP_CHAIN = 1200;                      // ms: taps inside this window chain/escalate
+function reactTo(a, kind){
+  a.target = null; a.t = 0; dirty = true;
+  if(reduce){ makeSay(a, pick(kind==="flee"?FLEE_LINES: kind==="dizzy"?DIZZY_LINES: kind==="dance"?DANCE_LINES: kind==="hide"?HIDE_LINES: YELP_LINES), 90); return; }
+  a.state = kind;
+  if(kind==="yelp") makeSay(a, pick(YELP_LINES), 70);
+  else if(kind==="flee"){ a.dir = -a.dir; makeSay(a, pick(FLEE_LINES), 80); }
+  else if(kind==="dizzy"){ makeSay(a, "TUM!", 50); burst(a.x+SPR_W*S/2, FLOOR-4, 6, "conf", ["#f4dc9c","#d9b46c"]); }
+  else if(kind==="dance") makeSay(a, pick(DANCE_LINES), 100);
+  else if(kind==="hide") makeSay(a, pick(HIDE_LINES), 90);
+}
+function panicAll(){
+  actors.forEach((a,i)=>{ a.target=null; a.t=-i*4; a.lastTap=performance.now();
+    if(!reduce){ a.state="flee"; a.dir = Math.random()<.5?1:-1; a.say=null; } });
+  actors.slice().sort(()=>Math.random()-.5).slice(0,3).forEach(a=>makeSay(a, pick(PANIC_LINES), 90));
+  dirty = true;
+}
+// wx/wy in world units; returns what was hit
+function tapScene(wx, wy, nowMs){
+  nowMs = nowMs || performance.now();
+  let best = null, bd = 1e9;
+  actors.forEach(a=>{
+    const cx = a.x + lastOffFg + SPR_W*S/2, hov = (HOVER[a.name]||0)*S;
+    const top = FLOOR - (SPR_W+8)*S - hov, bottom = FLOOR + 6*S;         // generous box
+    if(wx < cx - 18*S || wx > cx + 18*S || wy < top || wy > bottom) return;
+    const d = Math.abs(wx - cx); if(d < bd){ bd = d; best = a; }
+  });
+  if(best){
+    tapTimes = tapTimes.filter(t=>nowMs - t < TAP_CHAIN); tapTimes.push(nowMs);
+    if(tapTimes.length >= 3){ tapTimes = []; panicAll(); return "panic"; }
+    if(best.lastTap && nowMs - best.lastTap < REACT_GAP) return "cooldown";
+    best.lastTap = nowMs;
+    const kind = tapTimes.length === 2 ? pick(["flee","hide","dizzy"]) : pick(["yelp","flee","dizzy","dance","hide","yelp"]);
+    reactTo(best, kind);
+    return best.name;
+  }
+  // empty water: a few bubbles + nearby characters turn to look
+  if(!reduce) for(let i=0;i<5;i++) bubbles.push(Object.assign(newBubble(wx + (Math.random()-.5)*14, wy + Math.random()*6), { s: Math.random()<.5?0:1, v:.5+Math.random()*.4 }));
+  actors.forEach(a=>{
+    const cx = a.x + lastOffFg + SPR_W*S/2;
+    if(Math.abs(cx - wx) < 150 && (a.state==="walk"||a.state==="idle"||a.state==="look")){
+      a.dir = wx > cx ? 1 : -1; a.state = reduce ? a.state : "look"; a.t = 0;
+      if(Math.random()<.3 && !a.say) makeSay(a, pick(["o que foi isso?","bolhas!","hã?"]), 70);
+    }
+  });
+  dirty = true;
+  return "water";
+}
+if(cv.addEventListener){
+  cv.style.touchAction = "manipulation";
+  cv.style.cursor = "pointer";
+  cv.addEventListener("pointerdown", ev=>{
+    ev.preventDefault();
+    const r = cv.getBoundingClientRect(); if(!r.width || !r.height) return;
+    tapScene((ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height, ev.timeStamp || performance.now());
+  });
+}
 
 function sceneReact(ok){
   dirty = true;
