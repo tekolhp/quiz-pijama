@@ -575,22 +575,23 @@ function poseOf(a){
   return { fr, dy, dx, lie:false };
 }
 function tileRow(img, off, y){ const w=img.width; let x=((off%w)+w)%w - w; for(; x<W; x+=w) ctx.drawImage(img, x, y||0); }
-function drawStar(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x+S,y,S,3*S); ctx.fillRect(x,y+S,3*S,S); }
+function drawStar(x,y,c,k){ k=k||ctx; k.fillStyle=c; k.fillRect(x+S,y,S,3*S); k.fillRect(x,y+S,3*S,S); }
 function drawZ(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x,y,3*S,S); ctx.fillRect(x+S,y+S,S,S); ctx.fillRect(x,y+2*S,3*S,S); }
-function bubbleText(text, x, y, taken){
-  ctx.font = "13px 'Pixelify Sans', monospace";
-  const w = Math.ceil(ctx.measureText(text).width) + 12, h = 18;
-  let top = Math.round(Math.max(2, y - h - 4)); const bx = Math.round(Math.max(2, Math.min(W - w - 2, x - w/2)));
+function bubbleText(text, x, y, taken, k, ww){
+  const c2 = k || ctx, WW = ww || W;
+  c2.font = "13px 'Pixelify Sans', monospace";
+  const w = Math.ceil(c2.measureText(text).width) + 12, h = 18;
+  let top = Math.round(Math.max(2, y - h - 4)); const bx = Math.round(Math.max(2, Math.min(WW - w - 2, x - w/2)));
   // nudge upward (or down if no room) so bubbles never cover each other
   if(taken){ for(let k=0;k<6;k++){ const hit = taken.find(r=> bx < r[0]+r[2]+2 && r[0] < bx+w+2 && top < r[1]+r[3]+4 && r[1] < top+h+4);
       if(!hit) break; top = hit[1]-h-6 >= 2 ? hit[1]-h-6 : hit[1]+hit[3]+6; }
     taken.push([bx,top,w,h]); }
-  ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(bx+2, top+2, w, h);
-  ctx.fillStyle = "#f7f5ff"; ctx.fillRect(bx, top, w, h);
-  ctx.fillStyle = "#1b1233"; ctx.fillRect(bx+2, top+2, w-4, h-4);
+  c2.fillStyle = "rgba(0,0,0,.35)"; c2.fillRect(bx+2, top+2, w, h);
+  c2.fillStyle = "#f7f5ff"; c2.fillRect(bx, top, w, h);
+  c2.fillStyle = "#1b1233"; c2.fillRect(bx+2, top+2, w-4, h-4);
   const tx = Math.round(Math.max(bx+4, Math.min(bx+w-8, x-2)));
-  ctx.fillStyle = "#f7f5ff"; ctx.fillRect(tx, top+h, 4, 2); ctx.fillRect(tx+1, top+h+2, 2, 2);
-  ctx.textBaseline = "alphabetic"; ctx.fillText(text, bx+6, top+h-5);
+  c2.fillStyle = "#f7f5ff"; c2.fillRect(tx, top+h, 4, 2); c2.fillRect(tx+1, top+h+2, 2, 2);
+  c2.textBaseline = "alphabetic"; c2.fillText(text, bx+6, top+h-5);
 }
 
 function draw(now){
@@ -695,13 +696,16 @@ function update(dt, now){
   props = props.filter(p=>(p.life-=dt)>0);
 }
 
+const game = { open:false, expanding:false };
 let last = 0;
 function frame(now){
   const dt = Math.min(3, (now-last)/16.7 || 1); last = now;
+  if(game.open && !game.expanding){ requestAnimationFrame(frame); return; }   // minigame owns the screen
+  stepHold(dt, now);
   if(reduce){
     actors.forEach(a=>{ if(a.sayT>0){ a.sayT -= dt; if(a.sayT<=0){ a.say=null; dirty=true; } } });
-    if(dirty){ draw(0); dirty=false; }
-  } else { update(dt, now); draw(now); }
+    if(dirty || hold.shown > 0){ draw(0); drawHold(); dirty=false; }
+  } else { update(dt, now); draw(now); drawHold(); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -757,14 +761,66 @@ function tapScene(wx, wy, nowMs){
   dirty = true;
   return "water";
 }
+// Hold still on the aquarium to fill a loading bar; when it fills the aquarium expands into the bubble minigame.
+const HOLD_DELAY = 180, HOLD_FILL = 1200, TAP_MAX = 350, MOVE_TOL = 10;   // ms, ms, ms, css px
+const hold = { id:null, t0:0, cx:0, cy:0, wx:0, wy:0, p:0, shown:0, moved:false };
+function toWorld(ev){ const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left) * W / (r.width||1), (ev.clientY - r.top) * H / (r.height||1)]; }
+function stepHold(dt, now){
+  if(hold.id !== null && !hold.moved){
+    const held = performance.now() - hold.t0;
+    hold.p = Math.max(0, Math.min(1, (held - HOLD_DELAY) / HOLD_FILL));
+    if(held > HOLD_DELAY) hold.shown = 1;
+    if(hold.p >= 1){ hold.id = null; hold.p = 0; hold.shown = 0; openGame(); }
+  } else if(hold.shown > 0){
+    hold.p = Math.max(0, hold.p - .06*dt);                 // drain after an early release
+    if(hold.p <= 0) hold.shown = 0;
+  }
+}
+function drawHold(){
+  if(!hold.shown) return;
+  const bw = 54*S, bh = 6*S;
+  const bx = Math.round(Math.max(4, Math.min(W - bw - 4, hold.wx - bw/2))/S)*S;
+  let by = Math.round((hold.wy - 26*S)/S)*S; if(by < 24) by = Math.round((hold.wy + 12*S)/S)*S;
+  by = Math.min(by, H - bh - 4);
+  ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(bx+S, by+S, bw, bh);
+  ctx.fillStyle = "#f7f5ff"; ctx.fillRect(bx-S, by-S, bw+2*S, bh+2*S);
+  ctx.fillStyle = "#1b1233"; ctx.fillRect(bx, by, bw, bh);
+  const fw = Math.round(hold.p * (bw - 2*S) / S) * S;
+  ctx.fillStyle = "#58b4ff"; ctx.fillRect(bx+S, by+S, fw, bh-2*S);
+  ctx.fillStyle = "#bfe8ff"; ctx.fillRect(bx+S, by+S, fw, S);
+  for(let x = bx+S+6*S; x < bx+S+fw; x += 8*S){ ctx.fillStyle = "#f7f5ff"; ctx.fillRect(x, by+2*S, S, S); }   // little bubbles in the bar
+  ctx.font = "13px 'Pixelify Sans', monospace"; ctx.textBaseline = "alphabetic";
+  const label = "segura pra brincar…", lw = ctx.measureText(label).width;
+  const lx = Math.round(Math.max(4, Math.min(W - lw - 4, bx + bw/2 - lw/2)));
+  ctx.fillStyle = "#1b1233"; ctx.fillText(label, lx+1, by - 3*S + 1);
+  ctx.fillStyle = "#f7f5ff"; ctx.fillText(label, lx, by - 3*S);
+}
+function noDefault(ev){ if(ev.cancelable) ev.preventDefault(); }
 if(cv.addEventListener){
-  cv.style.touchAction = "manipulation";
+  cv.style.touchAction = "none";
   cv.style.cursor = "pointer";
+  cv.addEventListener("touchstart", noDefault, { passive:false });
+  cv.addEventListener("contextmenu", noDefault);
+  cv.addEventListener("selectstart", noDefault);
   cv.addEventListener("pointerdown", ev=>{
-    ev.preventDefault();
-    const r = cv.getBoundingClientRect(); if(!r.width || !r.height) return;
-    tapScene((ev.clientX - r.left) * W / r.width, (ev.clientY - r.top) * H / r.height, ev.timeStamp || performance.now());
+    noDefault(ev);
+    if(game.open || (ev.button !== undefined && ev.button > 0)) return;
+    const [wx, wy] = toWorld(ev);
+    Object.assign(hold, { id:ev.pointerId, t0:performance.now(), cx:ev.clientX, cy:ev.clientY, wx, wy, p:0, moved:false });
+    try{ cv.setPointerCapture(ev.pointerId); }catch(e){}
+    dirty = true;
   });
+  cv.addEventListener("pointermove", ev=>{
+    if(ev.pointerId !== hold.id) return;
+    if(Math.hypot(ev.clientX - hold.cx, ev.clientY - hold.cy) > MOVE_TOL){ hold.moved = true; hold.id = null; }
+  });
+  const release = ev=>{
+    if(ev.pointerId !== hold.id) return;
+    const held = performance.now() - hold.t0; hold.id = null;
+    if(ev.type === "pointerup" && held < TAP_MAX && !hold.moved) tapScene(hold.wx, hold.wy, performance.now());
+  };
+  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointercancel", release);
 }
 
 function sceneReact(ok){
@@ -779,3 +835,198 @@ function sceneReact(ok){
     const b = pick(actors.filter(x=>x!==a)); b.state = Math.random()<.5 ? "sleep" : "doze"; b.t=0; b.target=null;
   }
 }
+
+// ======================= BUBBLE MINIGAME (fullscreen) =======================
+// Two thumb buttons spray bubble jets from the bottom corners; bubbles push the crew around.
+const G = {
+  el:null, cv:null, ctx:null, w:0, h:0, zoom:1, floor:0, raf:0, last:0,
+  bodies:[], pool:[], live:0, splash:[], held:{ l:new Set(), r:new Set() }, emitAcc:{ l:0, r:0 },
+  best:0, airborne:0, keyFn:null, visFn:null, hud:null, hudTxt:"",
+};
+const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
+for(let i=0;i<G_MAX_BUB;i++) G.pool.push({ on:false, x:0, y:0, vx:0, vy:0, r:5, s:0, ph:0 });
+
+function gameSize(){
+  const vw = (window.innerWidth || 800), vh = (window.innerHeight || 600);
+  const targetH = Math.max(130, Math.min(260, Math.round(vw*0.26)));
+  G.zoom = targetH / H;                                   // same css px per world unit as the aquarium
+  G.w = Math.max(320, Math.ceil(vw / G.zoom / S) * S);
+  G.h = Math.max(200, Math.ceil(vh / G.zoom / S) * S);
+  G.floor = G.h - (AH - GROUND) * S;
+  if(G.cv){ G.cv.width = G.w; G.cv.height = G.h; G.ctx.imageSmoothingEnabled = false; }
+}
+function gameReset(){
+  G.bodies = actors.map((a,i)=>({ name:a.name, x:(i+.5)*(G.w/actors.length), y:G.floor - G_FEET, vx:0, vy:0,
+    rot:0, dir:a.dir, air:false, dist:0, peak:0, dizzy:0, say:null, sayT:0, blinkT:60+Math.random()*200, wander:Math.random()*200 }));
+  G.pool.forEach(b=>b.on=false); G.live = 0; G.splash = []; G.best = 0; G.airborne = 0;
+  G.held.l.clear(); G.held.r.clear();
+}
+function gSay(b, text, dur){ b.say = text; b.sayT = dur || 70; }
+function gEmit(side){
+  if(G.live >= G_MAX_BUB) return;
+  const b = G.pool.find(q=>!q.on); if(!b) return;
+  const left = side === "l";
+  const ang = (left ? -40 : -140) * Math.PI/180 + (Math.random()-.5)*.3;
+  const sp = 6.5 + Math.random()*2;
+  b.on = true; b.x = left ? 30 : G.w - 30; b.y = G.h - 22; b.vx = Math.cos(ang)*sp; b.vy = Math.sin(ang)*sp;
+  b.s = Math.random()<.65 ? 0 : (Math.random()<.8 ? 1 : 2); b.r = [5,7,11][b.s]; b.ph = Math.random()*6; G.live++;
+}
+function gPop(b, big){
+  b.on = false; G.live--;
+  if(G.splash.length < 220) for(let i=0;i<(big?5:3);i++) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*2.4, vy:(Math.random()-.5)*2.4 - .4, life:14+Math.random()*10 });
+}
+function gameStep(dt){
+  // emit: ~90 bubbles/s per held jet
+  ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
+  // bubbles
+  for(const b of G.pool){ if(!b.on) continue;
+    b.vx *= Math.pow(.986, dt); b.vy = b.vy*Math.pow(.986, dt) - .035*dt;              // water drag + buoyancy
+    b.x += (b.vx + Math.sin(b.ph += .15*dt)*.25)*dt; b.y += b.vy*dt;
+    if(b.y < 6 || b.x < -12 || b.x > G.w + 12) gPop(b, false);
+  }
+  // bodies
+  let air = 0;
+  G.bodies.forEach(c=>{
+    for(const b of G.pool){ if(!b.on) continue;
+      const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
+      if(dx*dx + dy*dy < rr*rr){
+        const k = .07 + b.r*.007;
+        c.vx += b.vx*k; c.vy += b.vy*k - .1;               // push along the bubble, mostly up
+        c.rot += (b.vx*.01 + (dx>0?-.02:.02));
+        gPop(b, true);
+      }
+    }
+    c.vy += G_GRAV*dt; c.vx *= Math.pow(G_DRAG, dt); c.vy *= Math.pow(G_DRAG, dt);
+    c.vx = Math.max(-9, Math.min(9, c.vx)); c.vy = Math.max(-10, Math.min(8, c.vy));
+    c.x += c.vx*dt; c.y += c.vy*dt;
+    const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
+    if(c.y >= ground){
+      if(c.air && c.vy > 3.2) gSay(c, pick(["ai!","ui!","tum!","ai ai ai"]), 60);
+      c.y = ground; c.vy = c.vy > 1.2 ? -c.vy*.35 : 0; c.vx *= .85;
+    }
+    if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; c.dizzy = 150; if(!c.sayT) gSay(c, pick(["bati a cabeça!","ploc!","tô vendo estrelas"]), 70); }
+    if(c.x < G_BODY_R){ c.x = G_BODY_R; c.vx = Math.abs(c.vx)*.6; }
+    if(c.x > G.w - G_BODY_R){ c.x = G.w - G_BODY_R; c.vx = -Math.abs(c.vx)*.6; }
+    c.air = c.y < ground - 3 || Math.abs(c.vy) > .4;
+    if(c.air){ air++; c.rot += (c.vx*.012)*dt; const h = ground - c.y; if(h > c.peak) c.peak = h; }
+    else {
+      c.rot *= .8; if(Math.abs(c.rot) < .05) c.rot = 0;
+      c.wander -= dt; if(c.wander < 0){ c.wander = 90 + Math.random()*200; c.dir = Math.random()<.5?1:-1; }
+      if(c.dizzy <= 0 && Math.abs(c.vx) < .5){ c.x += c.dir*.35*dt; c.dist += .35*dt; }
+    }
+    if(Math.abs(c.vx) > .2) c.dir = c.vx > 0 ? 1 : -1;
+    c.dizzy = Math.max(0, c.dizzy - dt); c.blinkT -= dt; if(c.blinkT < -7) c.blinkT = 90 + Math.random()*220;
+    if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
+    const meters = (ground - c.y) / (SPR_W*S) * .5;
+    if(meters > G.best) G.best = meters;
+  });
+  G.airborne = air;
+  G.splash = G.splash.filter(f=>(f.life -= dt) > 0);
+  G.splash.forEach(f=>{ f.x += f.vx*dt; f.y += f.vy*dt; });
+}
+function gameDraw(now){
+  const k = G.ctx, w = G.w, h = G.h, tm = reduce ? 0 : now;
+  // water: open water above, the aquarium's far layer anchored to the bottom
+  const grad = k.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "#2a64a8"); grad.addColorStop(.25, "#1d4f92"); grad.addColorStop(1, "#18468a");
+  k.fillStyle = grad; k.fillRect(0, 0, w, h);
+  const top = h - BG.far.height;
+  for(let x=0; x<w; x+=BG.far.width) k.drawImage(BG.far, x, top);
+  k.save(); k.globalCompositeOperation = "lighter";
+  for(let i=0;i<Math.max(3,Math.round(w/170));i++){ k.globalAlpha = .08 + .05*Math.sin(tm/1400+i*2.1);
+    const rx = ((i+.35)/Math.max(3,Math.round(w/170)))*w + Math.sin(tm/5200+i*1.7)*24 - 40;
+    k.drawImage(PROP.ray, Math.round(rx/S)*S, 0, PROP.ray.width, h); }
+  k.restore();
+  k.fillStyle = "rgba(190,230,255,.45)";
+  for(let x=0;x<w;x+=26) k.fillRect(Math.round((x + Math.sin(tm/700 + x/40)*4)/S)*S, 2*S + (Math.round(x/26)%2)*S, 5*S, S);
+  for(let x=-40; x<w; x+=BG.mid.width) k.drawImage(BG.mid, x, top);
+  for(let x=0; x<w; x+=BG.fore.width) k.drawImage(BG.fore, x, top);
+  // nozzles
+  [["l",30],["r",w-30]].forEach(([side,nx])=>{
+    k.save(); k.translate(nx, h-18); k.rotate(side==="l" ? .55 : -.55);
+    k.fillStyle = "#1b1233"; k.fillRect(-8, -16, 16, 22); k.fillStyle = G.held[side].size ? "#ffe066" : "#9fb4d9"; k.fillRect(-6, -14, 12, 18);
+    k.fillStyle = "#f7f5ff"; k.fillRect(-6, -14, 3, 18); k.restore(); });
+  // crew
+  const taken = [], heads = [];
+  G.bodies.forEach(c=>{
+    const sp = SPR[c.name] || SPR.octo, speed = Math.hypot(c.vx, c.vy);
+    let fr;
+    if(c.dizzy > 0 && !c.air) fr = sp.blink;
+    else if(c.air && speed > 2.4) fr = Math.floor(tm/90)%2 ? sp.wide : sp.walk[1+Math.floor(tm/180)%2];   // flailing
+    else if(c.air) fr = sp.happy;                                                                       // floating gently
+    else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
+    const img = fr[c.dir < 0 ? "l" : "r"];
+    const ground = G.floor - G_FEET, lift = Math.max(0, ground - c.y);
+    k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1;
+    const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
+    k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S); if(rot) k.rotate(rot);
+    k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S); k.restore();   // feet sit at y + 24
+    if(c.dizzy > 0){ for(let i=0;i<3;i++){ const a = tm/180 + i*2.094; drawStar(Math.round((c.x + Math.cos(a)*9*S)/S)*S, Math.round((c.y - 16*S + Math.sin(a)*3*S)/S)*S, i%2?P.W:P.yl, k); } }
+    heads.push([c, c.x, c.y - 14*S]);
+  });
+  // bubbles + splashes
+  for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
+  k.fillStyle = "#bfe8ff"; G.splash.forEach(f=>k.fillRect(Math.round(f.x/S)*S, Math.round(f.y/S)*S, S, S));
+  heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y, taken, k, w); });
+  // HUD text lives in the DOM (crisp pixel font); update only when it changes
+  const txt = "altura máxima: " + G.best.toFixed(1).replace(".", ",") + " m · bonequinhos no ar: " + G.airborne;
+  if(G.hud && txt !== G.hudTxt){ G.hud.textContent = txt; G.hudTxt = txt; }
+}
+function gameLoop(now){
+  if(!game.open){ G.raf = 0; return; }
+  if(document.hidden){ G.last = now; G.raf = requestAnimationFrame(gameLoop); return; }   // paused while hidden
+  const dt = Math.min(3, (now - G.last)/16.7 || 1); G.last = now;
+  gameStep(dt); gameDraw(now);
+  G.raf = requestAnimationFrame(gameLoop);
+}
+function openGame(){
+  if(game.open) return;
+  G.el = document.getElementById("bubbleGame"); if(!G.el) return;
+  G.cv = G.el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = G.el.querySelector(".bg-hud");
+  game.open = true; game.expanding = true;
+  gameSize(); gameReset();
+  document.documentElement.classList.add("bg-lock");
+  // expansion: start clipped to the aquarium's rectangle, grow to the whole viewport
+  const r = cv.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+  G.el.style.transition = "none";
+  G.el.style.clipPath = "inset(" + Math.max(0,r.top) + "px " + Math.max(0,vw-r.right) + "px " + Math.max(0,vh-r.bottom) + "px " + Math.max(0,r.left) + "px)";
+  G.el.hidden = false; G.el.classList.remove("ready");
+  G.last = performance.now(); gameDraw(G.last);
+  void G.el.offsetWidth;
+  G.el.style.transition = reduce ? "none" : "clip-path 300ms cubic-bezier(.2,.8,.2,1)";
+  G.el.style.clipPath = "inset(0px 0px 0px 0px)";
+  setTimeout(()=>{
+    game.expanding = false; G.el.classList.add("ready"); G.el.style.clipPath = "";
+    try{ const fs = G.el.requestFullscreen && G.el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
+  }, reduce ? 0 : 310);
+  G.raf = requestAnimationFrame(gameLoop);
+}
+function closeGame(){
+  if(!game.open) return;
+  game.open = false; game.expanding = false;
+  if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
+  G.held.l.clear(); G.held.r.clear();
+  G.el.hidden = true; G.el.classList.remove("ready");
+  document.documentElement.classList.remove("bg-lock");
+  try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
+  actors.forEach(a=>{ a.state = "walk"; a.t = 0; a.target = null; });
+  makeSay(pick(actors), pick(["que viagem!","de novo! de novo!","tô todo molhado","uau!"]), 120);
+  last = performance.now(); dirty = true;
+}
+(function wireGame(){
+  const el = document.getElementById && document.getElementById("bubbleGame");
+  if(!el || !el.querySelector) return;
+  const gcv = el.querySelector("canvas");
+  ["touchstart","contextmenu","selectstart","dblclick"].forEach(t=>el.addEventListener(t, ev=>{ if(!ev.target.closest(".bg-close") && ev.cancelable) ev.preventDefault(); }, { passive:false }));
+  gcv.addEventListener("pointerdown", noDefault);
+  el.querySelectorAll(".bg-jet").forEach(btn=>{
+    const side = btn.dataset.side;
+    btn.addEventListener("pointerdown", ev=>{ noDefault(ev); G.held[side].add(ev.pointerId); btn.classList.add("on"); try{ btn.setPointerCapture(ev.pointerId); }catch(e){} });
+    const up = ev=>{ G.held[side].delete(ev.pointerId); if(!G.held[side].size) btn.classList.remove("on"); };
+    ["pointerup","pointercancel","lostpointercapture"].forEach(t=>btn.addEventListener(t, up));
+  });
+  el.querySelector(".bg-close").addEventListener("click", closeGame);
+  window.addEventListener("keydown", ev=>{ if(ev.key === "Escape" && game.open) closeGame(); });
+  window.addEventListener("resize", ()=>{ if(game.open){ const ox = G.w; gameSize(); G.bodies.forEach(c=>{ c.x = c.x / ox * G.w; c.y = Math.min(c.y, G.floor - G_FEET); }); } });
+  document.addEventListener("fullscreenchange", ()=>{ if(game.open) gameSize(); });
+})();
