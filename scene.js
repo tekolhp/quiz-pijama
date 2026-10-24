@@ -857,13 +857,47 @@ const AIM_MIN = -165*Math.PI/180, AIM_MAX = -15*Math.PI/180, AIM_DEFAULT = { l:-
 const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
 const G_COL_R = SPR_W*S/2 - 2, G_COL_REST = .6, G_COL_ITERS = 4, G_COL_SLOP = .6, G_COL_HIT = 2.2;   // body-body collisions
 const HIT_LINES = ["POF!","ui!","sai!","ai!","opa!"];
+const PUSH_LINES = ["ei!","para com isso!","tá molhando!","uiii!","socorro!","kkkkk","de novo!","tô voando!","me põe no chão!","essa foi alta"];
+const EJECT_LINES = ["tchauuu!","me tira daqui!","lá vou eu!"];
+const RETURN_LINES = ["voltei!","que voo!","de novo não…"];
+const EJECT_AT = 120;                                      // bubble hits needed to launch a character
+let gLaunched = 0, gEjected = 0;                           // session totals for the HUD
+// rate-limited chatter: one bubble per character, ~1 line per 3-5 s
+function gTalk(c, lines, dur){ if(c.say || (c.talkCd||0) > 0) return; gSay(c, pick(lines), dur || 70); c.talkCd = 180 + Math.random()*120; }
+function ejectBody(c){
+  c.ej = { phase:"out", t:0, spin:(Math.random()<.5?-1:1)*(.25 + Math.random()*.15) };
+  const toSide = Math.random() < .45, dir = c.x < G.w/2 ? -1 : 1;
+  c.vx = toSide ? dir*(6 + Math.random()*2) : (Math.random()-.5)*3; c.vy = toSide ? -6 : -11;
+  c.heat = 0; c.say = null; c.talkCd = 0; gSay(c, pick(EJECT_LINES), 80); c.talkCd = 200;
+  gEjected++;
+  for(let i=0;i<8 && G.splash.length < 240;i++) G.splash.push({ x:c.x, y:c.y + 18, vx:(Math.random()-.5)*3, vy:Math.random()*2, life:16 });
+}
+// ejected flight / off-screen wait / walk-in along the floor; returns true while the body is out of normal play
+function stepEjected(c, dt, ground){
+  const e = c.ej; if(!e) return false;
+  e.t += dt;
+  if(e.phase === "out"){
+    c.x += c.vx*dt; c.y += c.vy*dt; c.rot += e.spin*dt;
+    if(c.y < -60 || c.x < -60 || c.x > G.w + 60){ e.phase = "gone"; e.t = 0; e.wait = 240 + Math.random()*120; c.say = null; c.sayT = 0; }
+  } else if(e.phase === "gone"){
+    if(e.t >= e.wait){
+      const fromLeft = Math.random() < .5;
+      e.phase = "back"; e.t = 0; c.x = fromLeft ? -30 : G.w + 30; c.y = ground; c.vx = c.vy = 0; c.rot = 0;
+      c.dir = fromLeft ? 1 : -1; e.goal = G.w * (fromLeft ? .12 + Math.random()*.3 : .58 + Math.random()*.3);
+      c.say = null; c.talkCd = 0; gSay(c, pick(RETURN_LINES), 90); c.talkCd = 240;
+    }
+  } else if(e.phase === "back"){
+    c.y = ground; c.x += c.dir*.9*dt; c.dist += .9*dt;
+    if((c.dir > 0 && c.x >= e.goal) || (c.dir < 0 && c.x <= e.goal)){ c.ej = null; c.heat = 0; c.vx = c.vy = 0; c.wander = 120; }
+  }
+  if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
+  c.talkCd = Math.max(0, (c.talkCd||0) - dt);
+  return true;
+}
 function collideFx(a, b, x, y, speed){
   a.scared = Math.max(a.scared||0, 40); b.scared = Math.max(b.scared||0, 40); a.rest = b.rest = 0;
   const who = Math.random() < .5 ? a : b;
-  if(!who.sayT && !(a.sayT && b.sayT)) gSay(who, pick(HIT_LINES), 45);
-  const n = Math.min(6, 2 + Math.floor(speed));
-  for(let i=0;i<n && G.splash.length < 240;i++){ const ang = Math.random()*Math.PI*2, v = 1 + Math.random()*1.5;
-    G.splash.push({ x, y, vx:Math.cos(ang)*v, vy:Math.sin(ang)*v, life:14 + Math.random()*8, c: i%2 ? "#ffe066" : "#f7f5ff", star: true }); }
+  if(!a.say && !b.say) gSay(who, pick(HIT_LINES), 45);
 }
 for(let i=0;i<G_MAX_BUB;i++) G.pool.push({ on:false, x:0, y:0, vx:0, vy:0, r:5, s:0, ph:0 });
 
@@ -895,7 +929,7 @@ function gEmit(side){
   const ang = G.aim[side] + (Math.random()-.5)*.3, n = G.noz[side];
   const sp = 6.5 + Math.random()*2;
   b.on = true; b.hits = 0; b.n = 0; b.x = n.x + Math.cos(G.aim[side])*10; b.y = n.y + Math.sin(G.aim[side])*10; b.vx = Math.cos(ang)*sp; b.vy = Math.sin(ang)*sp;
-  b.s = Math.random()<.65 ? 0 : (Math.random()<.8 ? 1 : 2); b.r = [5,7,11][b.s]; b.ph = Math.random()*6; G.live++;
+  b.s = Math.random()<.65 ? 0 : (Math.random()<.8 ? 1 : 2); b.r = [5,7,11][b.s]; b.ph = Math.random()*6; G.live++; gLaunched++;
 }
 function gPop(b, big){
   b.on = false; G.live--;
@@ -917,7 +951,10 @@ function gameStep(dt){
   // bodies: 1) bubble pushes + integrate + world bounds
   const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
   G.bodies.forEach((c, ci)=>{
+    if(stepEjected(c, dt, ground)) return;
     const bit = 1 << ci;
+    c.heat = Math.max(0, (c.heat||0) - dt/30);             // -1 hit per 0.5 s when not being hit
+    c.hitT = (c.hitT||0) + dt; c.talkCd = Math.max(0, (c.talkCd||0) - dt);
     for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
       const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
       if(dx*dx + dy*dy < rr*rr){
@@ -927,23 +964,25 @@ function gameStep(dt){
         b.hits |= bit; b.vx *= .8; b.vy *= .8;             // keeps flying, can hit the next character
         if(G.splash.length < 220) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*1.6, vy:-.6, life:10 });
         b.n = (b.n||0) + 1; if(b.n >= 3) gPop(b, true);
-        c.rest = 0;
+        c.rest = 0; c.heat += 1; c.hitT = 0;
+        if(Math.random() < .04) gTalk(c, PUSH_LINES, 70);
       }
     }
+    if(c.heat >= EJECT_AT){ ejectBody(c); return; }
     c.vy += G_GRAV*dt; c.vx *= Math.pow(G_DRAG, dt); c.vy *= Math.pow(G_DRAG, dt);
     c.vx = Math.max(-9, Math.min(9, c.vx)); c.vy = Math.max(-10, Math.min(8, c.vy));
     c.x += c.vx*dt; c.y += c.vy*dt;
     c.wasAir = c.air; c.support = false; c.side = 0;
     if(c.y >= ground){
-      if(c.air && c.vy > 3.2) gSay(c, pick(["ai!","ui!","tum!","ai ai ai"]), 60);
+      if(c.air && c.vy > 3.2) gTalk(c, ["ai!","ui!","tum!","ai ai ai"], 60);
       c.y = ground; c.vy = c.vy > 1.2 ? -c.vy*.35 : 0; c.vx *= .85; c.support = true;
     }
-    if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; c.dizzy = 150; if(!c.sayT) gSay(c, pick(["bati a cabeça!","ploc!","tô vendo estrelas"]), 70); }
+    if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; gTalk(c, PUSH_LINES, 70); }
     if(c.x < G_BODY_R){ c.x = G_BODY_R; c.vx = Math.abs(c.vx)*.6; }
     if(c.x > G.w - G_BODY_R){ c.x = G.w - G_BODY_R; c.vx = -Math.abs(c.vx)*.6; }
   });
   // 2) body-body collisions: equal-mass circles, positional correction + restitution impulse, a few passes for stacks
-  const B = G.bodies, R2 = G_COL_R*2;
+  const B = G.bodies.filter(c=>!c.ej), R2 = G_COL_R*2;
   for(let it=0; it<G_COL_ITERS; it++){
     for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++){
       const a = B[i], b = B[j];
@@ -1053,10 +1092,12 @@ function gameDraw(now){
   const taken = [], heads = [];
   k.save(); k.translate(0, groundDy);
   G.bodies.forEach(c=>{
+    if(c.ej && c.ej.phase === "gone") return;                        // off-screen, waiting to walk back in
     const sp = SPR[c.name] || SPR.octo, speed = Math.hypot(c.vx, c.vy);
     let fr;
-    if(c.scared > 0) fr = sp.wide;                                                                       // just got bonked
-    else if(c.dizzy > 0 && !c.air) fr = sp.blink;
+    if(c.ej && c.ej.phase === "out") fr = Math.floor(tm/120)%2 ? sp.wide : sp.happy;                   // launched!
+    else if(c.ej) { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; }                  // walking back in
+    else if(c.scared > 0) fr = sp.wide;                                                                  // just got bonked
     else if(c.air && speed > 2.4) fr = Math.floor(tm/90)%2 ? sp.wide : sp.walk[1+Math.floor(tm/180)%2];   // flailing
     else if(c.air) fr = sp.happy;                                                                       // floating gently
     else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
@@ -1065,11 +1106,18 @@ function gameDraw(now){
     const img = fr[c.dir < 0 ? "l" : "r"];
     const hovY = closing && c.landed ? -Math.round((HOVER[c.name]||0) * S * (G.trans.k||0)) : 0;
     const ground = G.floor - G_FEET, lift = Math.max(0, ground - c.y);
-    k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1;
+    if(!(c.ej && c.ej.phase === "out")){ k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1; }
     const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
     k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S + hovY); if(rot) k.rotate(rot);
     k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S); k.restore();   // feet sit at y + 24
-    if(c.dizzy > 0){ for(let i=0;i<3;i++){ const a = tm/180 + i*2.094; drawStar(Math.round((c.x + Math.cos(a)*9*S)/S)*S, Math.round((c.y - 16*S + Math.sin(a)*3*S)/S)*S, i%2?P.W:P.yl, k); } }
+    // ejection meter: 3 tiny segments over the head, only while it is being hit
+    if(!c.ej && !closing && c.heat > 1 && c.hitT < 45){
+      const seg = EJECT_AT/3, mx = Math.round(c.x/S)*S - 7*S, my = Math.round(c.y/S)*S - 17*S + hovY;
+      k.fillStyle = "#1b1233"; k.fillRect(mx - S, my - S, 16*S, 4*S);
+      for(let q=0;q<3;q++){ const f = Math.max(0, Math.min(1, (c.heat - q*seg)/seg)), sx = mx + q*5*S;
+        k.fillStyle = "#3a3f63"; k.fillRect(sx, my, 4*S, 2*S);
+        if(f > 0){ k.fillStyle = ["#ffe066","#ff9a3c","#ff5a5a"][q]; k.fillRect(sx, my, Math.max(1, Math.round(f*4))*S, 2*S); } }
+    }
     heads.push([c, c.x, c.y - 14*S]);
   });
   k.restore();
@@ -1079,9 +1127,10 @@ function gameDraw(now){
   G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
     if(f.star) drawStar(x, y, f.c, k); else { k.fillStyle = "#bfe8ff"; k.fillRect(x, y, S, S); } });
   heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
-  // HUD text lives in the DOM (crisp pixel font); update only when it changes
-  const txt = "altura máxima: " + G.best.toFixed(1).replace(".", ",") + " m · bonequinhos no ar: " + G.airborne;
-  if(G.hud && txt !== G.hudTxt){ G.hud.textContent = txt; G.hudTxt = txt; }
+  // HUD lives in the DOM (crisp pixel font); touch it only when a number changes
+  const txt = gLaunched + "|" + gEjected;
+  if(txt !== G.hudTxt){ G.hudTxt = txt;
+    if(G.hudB) G.hudB.textContent = String(gLaunched); if(G.hudE) G.hudE.textContent = String(gEjected); }
 }
 function gameLoop(now){
   if(!game.open){ G.raf = 0; return; }
@@ -1236,6 +1285,7 @@ function openGame(){
   G.opening = true;
   try{
     G.el = el; G.cv = el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = el.querySelector(".bg-hud");
+    G.hudB = el.querySelector(".bg-n-bub"); G.hudE = el.querySelector(".bg-n-ej"); G.hudTxt = "";
     game.open = true;
     hold.id = null; hold.shown = 0; hold.p = 0;
     document.documentElement.classList.add("bg-lock");
@@ -1269,6 +1319,8 @@ function closeGame(){
   G.el.classList.remove("ready");                          // HUD fades out
   G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
   const now = performance.now();
+  G.bodies.forEach(c=>{ if(c.ej){ const gone = c.ej.phase !== "back"; c.ej = null; c.heat = 0;
+      c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x)); if(gone){ c.y = -40; c.vx = 0; } c.rot = 0; } });
   G.bodies.forEach(c=>{ c.y0 = c.y; c.x0 = c.x; c.vx0 = Math.max(-2, Math.min(2, c.vx)); c.rot0 = c.rot; c.vx = c.vy = 0;
     c.landed = c.y >= G.floor - G_FEET - .5; c.say = null; c.sayT = 0; c.scared = 0; c.dizzy = 0; });
   G.trans = { dir:-1, phase:"strip", t0:now, k:0, groundDy:0, fsDone:false, frames:0 };

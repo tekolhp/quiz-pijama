@@ -134,7 +134,17 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
   display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px max(16px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(16px,env(safe-area-inset-left,0px));will-change:transform}
 .bubble-game .bg-ui{opacity:0;transition:opacity .2s}
 .bubble-game.ready .bg-ui{opacity:1}
-.bg-hud{position:absolute;top:max(10px,env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);max-width:calc(100% - 150px);font-family:var(--display);font-size:clamp(9px,2.4vw,13px);line-height:1.6;text-align:center;color:#f7f5ff;text-shadow:2px 2px 0 #1b1233;background:rgba(27,18,51,.55);border:3px solid #f7f5ff;padding:6px 10px;pointer-events:none}
+.bg-hud{position:absolute;top:max(8px,env(safe-area-inset-top,0px));left:max(8px,env(safe-area-inset-left,0px));display:flex;gap:10px;align-items:center;
+  font-family:var(--display);font-size:10px;line-height:1;color:#f7f5ff;text-shadow:1px 1px 0 #1b1233;background:rgba(13,8,32,.55);border-radius:999px;padding:5px 10px;pointer-events:none}
+.bg-stat{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
+.bg-stat svg{width:14px;height:14px;image-rendering:pixelated}
+.bg-hud{max-width:calc(100% - 16px);white-space:nowrap}
+.bg-main .bg-n-ej{font-size:16px;color:#ffe066}
+.bg-main svg{width:18px;height:18px}
+.bg-lbl{font-family:var(--body);font-weight:700;font-size:12px;color:#c3c6e6;text-shadow:none}
+.bg-sub{opacity:.85;font-size:9px;padding-left:10px;border-left:2px solid rgba(247,245,255,.25)}
+.bg-sub .bg-lbl{font-size:11px}
+@media (max-width:360px){.bg-sub .bg-lbl{display:none}}
 .bg-close{flex:0 0 auto;font-family:var(--body);font-weight:700;font-size:18px;color:#f7f5ff;background:#1b1233;border:3px solid #f7f5ff;box-shadow:3px 3px 0 #000;padding:8px 14px;cursor:pointer}
 .bg-close:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .bg-jet{position:relative;flex:0 0 auto;overflow:visible;width:96px;height:96px;padding:0;border:0;cursor:pointer;touch-action:none;
@@ -154,7 +164,10 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
 <div class="aquarium"><canvas id="sea" width="320" height="110" aria-label="Turma do pijama passeando no fundo do mar. Segure o dedo para abrir o minigame das bolhas."></canvas></div>
 <div class="bubble-game" id="bubbleGame" hidden role="dialog" aria-label="Minigame das bolhas">
   <canvas aria-label="Turma do pijama sendo empurrada por jatos de bolhas"></canvas>
-  <div class="bg-hud bg-ui" aria-live="off">altura máxima: 0,0 m · bonequinhos no ar: 0</div>
+  <div class="bg-hud bg-ui" aria-live="off">
+    <span class="bg-stat bg-main"><svg viewBox="0 0 7 7" aria-hidden="true" shape-rendering="crispEdges"><path fill="#f7f5ff" d="M3 0h1v1h1v3h1v2h-1v-1h-1v1h-1v-1h-1v1h-1v-2h1v-3h1z"/><path fill="#ff6a5c" d="M3 1h1v2h-1z"/><path fill="#ffe066" d="M3 6h1v1h-1z"/></svg><span class="bg-n-ej">0</span><span class="bg-lbl">personagens ejetados</span></span>
+    <span class="bg-stat bg-sub" title="bolhas lançadas"><svg viewBox="0 0 7 7" aria-hidden="true" shape-rendering="crispEdges"><path fill="#bfe8ff" d="M2 0h3v1h1v1h1v3h-1v1h-1v1h-3v-1h-1v-1h-1v-3h1v-1h1z"/><path fill="#2b66c2" d="M2 1h3v1h1v3h-1v1h-3v-1h-1v-3h1z"/><path fill="#f7f5ff" d="M2 2h1v1h-1z"/></svg><span class="bg-n-bub">0</span><span class="bg-lbl">bolhas lançadas</span></span>
+  </div>
   <div class="bg-strip">
     <button type="button" class="bg-jet" data-side="l" aria-label="Jato de bolhas da esquerda"><span class="bg-needle"></span></button>
     <button type="button" class="bg-close">Fechar</button>
