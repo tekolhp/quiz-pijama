@@ -696,7 +696,7 @@ function update(dt, now){
   props = props.filter(p=>(p.life-=dt)>0);
 }
 
-const game = { open:false, expanding:false };
+const game = { open:false, expanding:false, handoff:false };
 let last = 0, mainRaf = 0, mainTick = 0;
 function frame(now){
   mainRaf = requestAnimationFrame(frame);                  // reschedule first: an exception below can never kill the loop
@@ -706,7 +706,7 @@ function frame(now){
     if(game.open){
       // self-heal: "open" but the overlay is gone (or its loop died) -> force a clean close
       if(!G.el || G.el.hidden || (!G.raf && !G.trans)) finishClose();
-      else return;                                         // minigame owns the screen
+      else if(!game.handoff) return;                       // minigame owns the screen (except during the closing crossfade)
     }
     stepHold(dt, now);
     if(reduce){
@@ -873,12 +873,14 @@ function stripH(){
 }
 function gameSize(){
   const vw = (window.innerWidth || 800), vh = Math.max(200, (window.innerHeight || 600) - stripH());   // water area sits above the control strip
-  const targetH = Math.max(130, Math.min(260, Math.round(vw*0.26)));
-  G.zoom = targetH / H;                                   // same css px per world unit as the aquarium
-  G.w = Math.max(320, Math.ceil(vw / G.zoom / S) * S);
+  let ar = null; try{ ar = cv.getBoundingClientRect(); }catch(e){}
+  G.zoom = ar && ar.height ? ar.height / H : Math.max(130, Math.min(260, Math.round(vw*0.26))) / H;   // exactly the aquarium's zoom
+  G.sx = ar && ar.width ? ar.width / W : G.zoom;           // horizontal css px per unit, as the aquarium (its world can be min-width clamped)
+  G.w = Math.max(S, Math.ceil(vw / G.sx / S) * S);
   G.h = Math.max(200, Math.ceil(vh / G.zoom / S) * S);
   G.floor = G.h - (AH - GROUND) * S;
-  if(G.cv){ G.cv.width = G.w; G.cv.height = G.h; G.ctx.imageSmoothingEnabled = false; }
+  if(G.cv){ G.cv.width = G.w; G.cv.height = G.h; G.ctx.imageSmoothingEnabled = false;
+    G.cv.style.width = (G.w * G.sx) + "px"; G.cv.style.height = (G.h * G.zoom) + "px"; }   // may overflow by <1 unit; strip covers it
 }
 function gameReset(){
   G.bodies = actors.map((a,i)=>({ name:a.name, x:(i+.5)*(G.w/actors.length), y:G.floor - G_FEET, vx:0, vy:0,
@@ -899,15 +901,19 @@ function gPop(b, big){
   b.on = false; G.live--;
   if(G.splash.length < 220) for(let i=0;i<(big?5:3);i++) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*2.4, vy:(Math.random()-.5)*2.4 - .4, life:14+Math.random()*10 });
 }
-function gameStep(dt){
-  // emit: ~90 bubbles/s per held jet
-  ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
-  // bubbles
+function stepBubbles(dt, popChance){
   for(const b of G.pool){ if(!b.on) continue;
     b.vx *= Math.pow(.986, dt); b.vy = b.vy*Math.pow(.986, dt) - .035*dt;              // water drag + buoyancy
     b.x += (b.vx + Math.sin(b.ph += .15*dt)*.25)*dt; b.y += b.vy*dt;
-    if(b.y < 6 || b.x < -12 || b.x > G.w + 12) gPop(b, false);
+    if(b.y < 6 || b.x < -12 || b.x > G.w + 12 || (popChance && Math.random() < popChance)) gPop(b, false);
   }
+  G.splash = G.splash.filter(f=>(f.life -= dt) > 0);
+  G.splash.forEach(f=>{ f.x += f.vx*dt; f.y += f.vy*dt; });
+}
+function gameStep(dt){
+  // emit: ~90 bubbles/s per held jet
+  ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
+  stepBubbles(dt);
   // bodies: 1) bubble pushes + integrate + world bounds
   const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
   G.bodies.forEach((c, ci)=>{
@@ -996,18 +1002,19 @@ function gameStep(dt){
     if(meters > G.best) G.best = meters;
   });
   G.airborne = air;
-  G.splash = G.splash.filter(f=>(f.life -= dt) > 0);
-  G.splash.forEach(f=>{ f.x += f.vx*dt; f.y += f.vy*dt; });
 }
 function gameDraw(now){
   const k = G.ctx, w = G.w, h = G.h, tm = reduce ? 0 : now;
-  const groundDy = G.trans ? Math.round(G.trans.dy * (1 - G.trans.e) / S) * S : 0;   // world units the floor sits above its final spot
+  const groundDy = G.trans ? Math.round(G.trans.groundDy || 0) : 0;   // world units the floor sits above its resting spot
+  const sw = reduce ? 0 : Math.sin(tm/6500);
+  const offFar = Math.round(sw*1)*S, offMid = Math.round(sw*3)*S - 40, offFg = Math.round(sw*6)*S;   // same as the aquarium
+  const tile = (img, off, y)=>{ const tw = img.width; for(let x = ((off%tw)+tw)%tw - tw; x < w; x += tw) k.drawImage(img, x, y); };
   // water: open water above, the aquarium's far layer anchored to the bottom
   const grad = k.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, "#2a64a8"); grad.addColorStop(.25, "#1d4f92"); grad.addColorStop(1, "#18468a");
   k.fillStyle = grad; k.fillRect(0, 0, w, h);
   const top = h - BG.far.height;
-  for(let x=0; x<w; x+=BG.far.width) k.drawImage(BG.far, x, top + groundDy);   // ridges ride with the floor
+  tile(BG.far, offFar, top + groundDy);                                  // ridges ride with the floor
   k.save(); k.globalCompositeOperation = "lighter";
   for(let i=0;i<Math.max(3,Math.round(w/170));i++){ k.globalAlpha = .08 + .05*Math.sin(tm/1400+i*2.1);
     const rx = ((i+.35)/Math.max(3,Math.round(w/170)))*w + Math.sin(tm/5200+i*1.7)*24 - 40;
@@ -1015,11 +1022,25 @@ function gameDraw(now){
   k.restore();
   k.fillStyle = "rgba(190,230,255,.45)";
   for(let x=0;x<w;x+=26) k.fillRect(Math.round((x + Math.sin(tm/700 + x/40)*4)/S)*S, 2*S + (Math.round(x/26)%2)*S, 5*S, S);
-  for(let x=-40; x<w; x+=BG.mid.width) k.drawImage(BG.mid, x, top + groundDy);
-  for(let x=0; x<w; x+=BG.fore.width) k.drawImage(BG.fore, x, top + groundDy);
+  tile(BG.mid, offMid, top + groundDy);
+  // window/lantern glows, same as the aquarium
+  k.save(); k.globalCompositeOperation = "lighter";
+  { const mw = BG.mid.width;
+    for(let base = ((offMid%mw)+mw)%mw - mw; base < w; base += mw) BG.glows.forEach(([gx,gy,ph])=>{
+      const img = ph===0 ? PROP.glow : PROP.glowS, half = (img.width/S>>1)*S;
+      k.globalAlpha = ph===0 ? .3+.2*Math.sin(tm/600) : .2+.06*Math.sin(tm/900+ph);
+      k.drawImage(img, base + gx*S - half, top + groundDy + gy*S - half); }); }
+  k.restore();
+  tile(BG.fore, offFg, top + groundDy);
+  // seaweed from the aquarium's own layout (same x positions, same sway)
+  const gFloor = G.floor + groundDy;
+  const weed = wd => { const segs = PROP.weed[wd.type];
+    for(let q=0;q<wd.n;q++){ const ox = reduce ? 0 : Math.round(Math.sin(tm/750 + wd.ph + q*.55)*q*.45);
+      k.drawImage(segs[q%2], wd.x + offFg + ox*S, gFloor + 2*S - (q+1)*5*S); } };
+  weeds.forEach(wd=>{ if(!wd.front) weed(wd); });
   if(groundDy < 0){ k.fillStyle = "#b8924e"; k.fillRect(0, h + groundDy, w, -groundDy); }   // sand below the rising floor
   // nozzles
-  ["l","r"].forEach(side=>{
+  if(!(G.trans && G.trans.dir < 0)) ["l","r"].forEach(side=>{
     const n = G.noz[side], on = G.held[side].size > 0, a = G.aim[side];
     const step = Math.round((a + Math.PI/2) / (Math.PI/12)) * (Math.PI/12);   // snap to 15deg steps: chunky pixels
     k.save(); k.translate(Math.round(n.x/S)*S, Math.round(n.y/S)*S + groundDy); k.rotate(step);
@@ -1039,16 +1060,20 @@ function gameDraw(now){
     else if(c.air && speed > 2.4) fr = Math.floor(tm/90)%2 ? sp.wide : sp.walk[1+Math.floor(tm/180)%2];   // flailing
     else if(c.air) fr = sp.happy;                                                                       // floating gently
     else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
+    const closing = G.trans && G.trans.dir < 0;
+    if(closing) fr = c.landed ? sp.walk[0] : sp.happy;                 // match the aquarium's idle pose for the handoff
     const img = fr[c.dir < 0 ? "l" : "r"];
+    const hovY = closing && c.landed ? -Math.round((HOVER[c.name]||0) * S * (G.trans.k||0)) : 0;
     const ground = G.floor - G_FEET, lift = Math.max(0, ground - c.y);
     k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1;
     const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
-    k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S); if(rot) k.rotate(rot);
+    k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S + hovY); if(rot) k.rotate(rot);
     k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S); k.restore();   // feet sit at y + 24
     if(c.dizzy > 0){ for(let i=0;i<3;i++){ const a = tm/180 + i*2.094; drawStar(Math.round((c.x + Math.cos(a)*9*S)/S)*S, Math.round((c.y - 16*S + Math.sin(a)*3*S)/S)*S, i%2?P.W:P.yl, k); } }
     heads.push([c, c.x, c.y - 14*S]);
   });
   k.restore();
+  weeds.forEach(wd=>{ if(wd.front) weed(wd); });
   // bubbles + splashes
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
   G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
@@ -1079,33 +1104,115 @@ function aquariumGeom(){
   if(!r || !r.height) return { top:0, floorPx:0, ok:false };            // aquarium not laid out (e.g. hidden while typing)
   return { top:r.top, floorPx:r.top + FLOOR * r.height / H, left:r.left, width:r.width, ok:true };
 }
-// Clip the overlay to a band that grows from the aquarium (e=0) to the full screen (e=1);
-// the sand + crew (canvas) and the control strip slide down together.
+const easeInOut = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+const CLOSE_STRIP = 200, CLOSE_LAND = 350, CLOSE_MAIN = 500, CLOSE_HAND = 120, CLOSE_FADE = 150, SETTLE_MAX = 700;
+// css px per game unit and the canvas' screen origin (canvas CSS size is exact, so sx == sy == zoom)
+function gameScale(){ let r = null; try{ r = G.cv.getBoundingClientRect(); }catch(e){}
+  return r && r.height ? { top:r.top, left:r.left, s:r.height / G.h, sx:r.width / G.w } : { top:0, left:0, s:G.zoom, sx:G.sx || G.zoom }; }
+// floor offset (game units) that puts the game's floor exactly on the aquarium's floor line
+function floorDelta(){ const aq = aquariumGeom(), g = gameScale(); return aq.ok ? (aq.floorPx - g.top)/g.s - G.floor : 0; }
+function pageNodes(){ return Array.prototype.filter.call(document.body ? document.body.children : [], n=>
+  n.tagName !== "SCRIPT" && n.id !== "bubbleGame" && !(n.classList && n.classList.contains("aquarium"))); }
+function setPage(op, ty){ pageNodes().forEach(n=>{ if(!n.style) return;
+  n.style.opacity = op == null ? "" : String(op); n.style.transform = ty == null ? "" : "translateY(" + ty.toFixed(1) + "px)"; }); }
+function stripEl(){ return G.el && G.el.querySelector(".bg-strip"); }
+
+// OPENING: the overlay's band grows from the aquarium to the full screen while the floor + strip slide down
 function applyTrans(){
-  const T = G.trans, e = T.e, aq = aquariumGeom();
-  const dy = aq.floorPx / G.zoom - G.floor;                              // world units the floor sits above its final spot
-  T.dy = dy;
-  const lift = dy * (1 - e) * G.zoom;                                    // css px (negative = higher on screen)
-  const st = G.el.querySelector(".bg-strip");
-  if(st && st.style) st.style.transform = e >= 1 ? "" : "translateY(" + lift.toFixed(1) + "px)";
+  const T = G.trans, e = T.e, aq = aquariumGeom(), g = gameScale();
+  T.dy = floorDelta(); T.groundDy = T.dy * (1 - e);
+  const lift = T.groundDy * g.s;                                          // css px (negative = higher on screen)
+  const st = stripEl(); if(st && st.style) st.style.transform = e >= 1 ? "" : "translateY(" + lift.toFixed(1) + "px)";
   const top = Math.max(0, aq.top) * (1 - e), bottom = Math.max(0, -lift);
   G.el.style.clipPath = e >= 1 ? "" : "inset(" + top.toFixed(1) + "px 0px " + bottom.toFixed(1) + "px 0px)";
 }
 function stepTrans(now){
   const T = G.trans;
-  if(T.waitUntil){                                         // closing: wait for fullscreen exit to settle (event, 2 frames, or timeout)
-    T.frames = (T.frames||0) + 1;
-    const settled = !document.fullscreenElement && (T.fsDone || T.frames > 2);
-    if(!settled && now < T.waitUntil){ T.e = 1; applyTrans(); return; }
-    T.waitUntil = 0; T.t0 = now; relayoutGame();
-  }
+  if(T.dir < 0){ stepClose(now); return; }
   const raw = Math.max(0, Math.min(1, (now - T.t0) / (reduce ? 1 : TRANS_MS)));
-  T.e = T.dir > 0 ? easeOut(raw) : 1 - easeOut(raw);
+  T.e = easeOut(raw);
   applyTrans();
-  if(raw >= 1){
-    if(T.dir > 0){ G.trans = null; G.el.classList.add("ready"); G.el.style.clipPath = ""; relayoutGame(); }
-    else finishClose();
+  if(raw >= 1){ G.trans = null; G.el.classList.add("ready"); G.el.style.clipPath = ""; relayoutGame(); }
+}
+
+// CLOSING: strip out + crew lands -> exit fullscreen & settle (overlay opaque) -> band shrinks to the aquarium
+// while the floor glides up and the page fades in -> crossfade into the live aquarium -> hide overlay.
+function landBodies(now){
+  const T = G.trans, ground = G.floor - G_FEET;
+  G.bodies.forEach(c=>{
+    if(c.landed) { c.y = ground; return; }
+    const t = Math.min(1, (now - T.t0) / (reduce ? 1 : CLOSE_LAND)), q = t*t;           // ease-in: a gentle fall
+    c.y = c.y0 + (ground - c.y0) * q;
+    c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x0 + c.vx0 * 12 * Math.sin(t*Math.PI/2)));
+    c.rot = c.rot0 * (1 - t);
+    if(t >= 1){ c.landed = true; c.y = ground; c.rot = 0; }
+  });
+}
+function handBack(now){
+  // hand the crew to the aquarium at exactly the screen spot they occupy now (no teleport), same facing
+  try{
+    const aq = aquariumGeom(), g = gameScale(), offFg = reduce ? 0 : Math.round(Math.sin(now/6500)*6)*S;
+    actors.forEach((a,i)=>{ const c = G.bodies[i]; if(!c || !aq.ok) return;
+      const left = g.left + (Math.round(c.x/S)*S - SPR_W*S/2) * g.sx;              // sprite's left edge, css px
+      a.x = (left - aq.left) * W / aq.width - offFg;
+      a.dir = c.dir || a.dir; });
+  }catch(err){ actors.forEach((a,i)=>{ a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2; }); }
+  actors.forEach((a,i)=>{
+    if(!isFinite(a.x)) a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2;
+    a.x = Math.max(2, Math.min(W - SPR_W*S - 2, a.x));
+    a.state = "idle"; a.t = -60; a.target = null; a.say = null; a.sayT = 0; a.blinkT = 200; });
+  gagCool = Math.max(gagCool, 400);
+  hold.id = null; hold.shown = 0; hold.p = 0;
+  last = performance.now(); dirty = true;
+  game.handoff = true;                                     // main loop draws the aquarium under the fading overlay
+}
+function stepClose(now){
+  const T = G.trans, st = stripEl();
+  const dt = Math.min(3, (now - (T.lastNow || now))/16.7) || 1; T.lastNow = now;
+  landBodies(now);
+  stepBubbles(dt, T.phase === "main" ? .02 + .5*(T.k||0) : .01);   // bubbles drift up and fizzle out before the handoff
+  if(T.phase === "main" && game.handoff) G.pool.forEach(b=>{ if(b.on) gPop(b, false); });
+  if(T.phase === "strip"){
+    const t = Math.min(1, (now - T.t0) / (reduce ? 1 : CLOSE_STRIP));
+    if(st && st.style) st.style.transform = "translateY(" + (easeInOut(t) * (stripH() + 8)).toFixed(1) + "px)";
+    T.groundDy = 0;
+    if(t >= 1 && G.bodies.every(c=>c.landed)){
+      T.phase = "settle"; T.ts = now; T.frames = 0;
+      try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } else T.fsDone = true; }catch(e){ T.fsDone = true; }
+    }
+    return;
   }
+  if(T.phase === "settle"){
+    if(!document.fullscreenElement && T.fsDone) T.frames++;
+    if(T.frames < 2 && now - T.ts < SETTLE_MAX) return;   // overlay stays opaque while the browser relayouts
+    document.documentElement.classList.remove("bg-lock");
+    if(document.body && document.body.classList) document.body.classList.remove("bg-lock");
+    try{ fitScene(); }catch(e){}                           // aquarium at its final size (hidden under the overlay)
+    relayoutGame();
+    G.bodies.forEach(c=>{ c.landed = true; c.y = G.floor - G_FEET; });
+    setPage(0, 12);
+    T.phase = "main"; T.tm = now; T.k = 0;
+    if(reduce){ T.groundDy = floorDelta(); T.k = 1; applyBand(1); setPage(1, 0); handBack(now); }
+    return;
+  }
+  // main motion (or a short fade with reduced motion)
+  const dur = reduce ? CLOSE_FADE : CLOSE_MAIN, el = now - T.tm, raw = Math.min(1, el / dur);
+  if(!reduce){
+    const k = easeInOut(Math.min(1, el / (dur - CLOSE_HAND))); T.k = k;   // motion done by the time the crossfade starts
+    T.groundDy = floorDelta() * k;                         // re-measured every frame
+    applyBand(k); setPage(k, 12 * (1 - k));
+    if(el >= dur - CLOSE_HAND && !game.handoff) handBack(now);
+  }
+  const fade = reduce ? raw : Math.max(0, (el - (dur - CLOSE_HAND)) / CLOSE_HAND);
+  G.el.style.opacity = String(1 - Math.min(1, fade));
+  if(raw >= 1) finishClose(true);
+}
+// visible band: k=0 full screen, k=1 exactly the aquarium's rect
+function applyBand(k){
+  const aq = aquariumGeom(), vh = window.innerHeight || 0;
+  let bottomPx = 0; try{ const r = cv.getBoundingClientRect(); bottomPx = Math.max(0, vh - r.bottom); }catch(e){}
+  const top = Math.max(0, aq.top) * k, bottom = bottomPx * k;
+  G.el.style.clipPath = "inset(" + top.toFixed(2) + "px 0px " + bottom.toFixed(2) + "px 0px)";
 }
 // Resize the game world to the current viewport and keep the crew inside it
 function relayoutGame(){
@@ -1115,7 +1222,7 @@ function relayoutGame(){
   G.bodies.forEach(c=>{ c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x / ox * G.w)); c.y = Math.min(c.y + (G.floor - oFloor), G.floor - G_FEET); });
 }
 function measureNozzles(){
-  const z = G.zoom;
+  const z = G.sx || G.zoom;
   G.el.querySelectorAll(".bg-jet").forEach(btn=>{
     const side = btn.dataset.side, r = btn.getBoundingClientRect && btn.getBoundingClientRect();
     // nozzle sits on the sand above the pad's column so jets start at the crew's feet
@@ -1136,7 +1243,7 @@ function openGame(){
     gameSize(); gameReset(); measureNozzles();
     G.aim.l = AIM_DEFAULT.l; G.aim.r = AIM_DEFAULT.r;
     // crew starts exactly where it stands in the aquarium
-    const aq = aquariumGeom(), z = G.zoom;
+    const aq = aquariumGeom(), z = G.sx || G.zoom;
     if(aq.ok) G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (aq.left + (a.x + lastOffFg + SPR_W*S/2) * aq.width / W) / z; c.dir = a.dir; });
     G.trans = { dir:1, t0:performance.now(), e:0, dy:0 };
     applyTrans();
@@ -1158,44 +1265,38 @@ function releaseJets(){
 }
 function closeGame(){
   if(!game.open || (G.trans && G.trans.dir < 0)) return;
-  releaseJets();
-  G.el.classList.remove("ready");
-  // the crew lands, then the floor rises back into the aquarium
-  G.bodies.forEach(c=>{ c.y = G.floor - G_FEET; c.vx = c.vy = 0; c.rot = 0; c.say = null; });
-  const inFs = !!document.fullscreenElement;
-  try{ if(inFs && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
-  // geometry is re-measured every frame; start moving only after fullscreen exit settles
-  G.trans = { dir:-1, t0:performance.now(), e:1, dy:0, waitUntil: performance.now() + (inFs ? 700 : 0) + 34, fsDone: !inFs, frames:0 };
+  releaseJets();                                           // input frozen from here on (pads ignore taps while G.trans is set)
+  G.el.classList.remove("ready");                          // HUD fades out
+  G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
+  const now = performance.now();
+  G.bodies.forEach(c=>{ c.y0 = c.y; c.x0 = c.x; c.vx0 = Math.max(-2, Math.min(2, c.vx)); c.rot0 = c.rot; c.vx = c.vy = 0;
+    c.landed = c.y >= G.floor - G_FEET - .5; c.say = null; c.sayT = 0; c.scared = 0; c.dizzy = 0; });
+  G.trans = { dir:-1, phase:"strip", t0:now, k:0, groundDy:0, fsDone:false, frames:0 };
   kickGame();
 }
-function finishClose(){
-  game.open = false; G.trans = null; G.opening = false;
+function finishClose(smooth){
+  const wasHandoff = smooth === true && game.handoff;
+  game.open = false; game.handoff = false; G.trans = null; G.opening = false;
   if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
   try{ releaseJets(); }catch(e){}
   if(G.el){
-    G.el.hidden = true; G.el.style.display = "none"; G.el.style.clipPath = ""; G.el.classList.remove("ready");
-    const st = G.el.querySelector(".bg-strip"); if(st && st.style) st.style.transform = "";
+    G.el.hidden = true; G.el.style.display = "none"; G.el.style.clipPath = ""; G.el.style.opacity = ""; G.el.style.background = "";
+    G.el.classList.remove("ready");
+    const st = stripEl(); if(st && st.style) st.style.transform = "";
   }
+  try{ setPage(null, null); }catch(e){}
   document.documentElement.classList.remove("bg-lock");
   if(document.body && document.body.classList) document.body.classList.remove("bg-lock");
   try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
-  try{ fitScene(); }catch(e){}
-  // hand the crew back to the aquarium at matching x positions
-  try{
-    const aq = aquariumGeom();
-    actors.forEach((a,i)=>{ const c = G.bodies[i];
-      if(c && aq.ok && isFinite(c.x)) a.x = (c.x * G.zoom - aq.left) * W / aq.width - lastOffFg - SPR_W*S/2;
-      if(c) a.dir = c.dir || a.dir; });
-  }catch(err){
-    actors.forEach((a,i)=>{ a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2; });
+  if(!wasHandoff){
+    // abrupt path (error / self-heal): put everything back in a sane state and redraw now
+    try{ fitScene(); }catch(e){}
+    handBack(performance.now()); game.handoff = false;
+    actors.forEach(a=>{ a.state = "walk"; a.t = 0; });
+    try{ draw(performance.now()); drawHold(); }catch(e){}
   }
-  actors.forEach((a,i)=>{
-    if(!isFinite(a.x)) a.x = Math.round((i+0.5)*(W/actors.length)) - SPR_W*S/2;
-    a.x = Math.max(2, Math.min(W - SPR_W*S - 2, a.x));
-    a.state = "walk"; a.t = 0; a.target = null; a.say = null; a.sayT = 0; });
-  makeSay(pick(actors), pick(["que viagem!","de novo! de novo!","tô todo molhado","uau!"]), 120);
-  last = performance.now(); dirty = true;
-  try{ draw(0); drawHold(); }catch(e){}                    // immediate full redraw (also covers reduced motion)
+  setTimeout(()=>{ if(!game.open) makeSay(pick(actors), pick(["que viagem!","de novo! de novo!","tô todo molhado","uau!"]), 120); }, 300);
+  dirty = true;
   kickMain();
 }
 (function wireGame(){
@@ -1226,7 +1327,7 @@ function finishClose(){
   window.addEventListener("resize", ()=>{ if(game.open && !G.trans) relayoutGame(); });
   const onFs = ()=>{
     if(!game.open){ fitScene(); dirty = true; kickMain(); return; }
-    if(G.trans && G.trans.dir < 0){ if(!document.fullscreenElement) G.trans.fsDone = true; return; }
+    if(G.trans && G.trans.dir < 0){ if(!document.fullscreenElement) G.trans.fsDone = true; relayoutGame(); try{ gameDraw(performance.now()); }catch(e){} return; }
     relayoutGame(); kickGame();
   };
   document.addEventListener("fullscreenchange", onFs);
