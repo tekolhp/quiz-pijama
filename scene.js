@@ -700,7 +700,7 @@ const game = { open:false, expanding:false };
 let last = 0;
 function frame(now){
   const dt = Math.min(3, (now-last)/16.7 || 1); last = now;
-  if(game.open && !game.expanding){ requestAnimationFrame(frame); return; }   // minigame owns the screen
+  if(game.open){ requestAnimationFrame(frame); return; }   // minigame owns the screen
   stepHold(dt, now);
   if(reduce){
     actors.forEach(a=>{ if(a.sayT>0){ a.sayT -= dt; if(a.sayT<=0){ a.say=null; dirty=true; } } });
@@ -777,22 +777,17 @@ function stepHold(dt, now){
 }
 function drawHold(){
   if(!hold.shown) return;
-  const bw = 54*S, bh = 6*S;
-  const bx = Math.round(Math.max(4, Math.min(W - bw - 4, hold.wx - bw/2))/S)*S;
-  let by = Math.round((hold.wy - 26*S)/S)*S; if(by < 24) by = Math.round((hold.wy + 12*S)/S)*S;
-  by = Math.min(by, H - bh - 4);
-  ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(bx+S, by+S, bw, bh);
-  ctx.fillStyle = "#f7f5ff"; ctx.fillRect(bx-S, by-S, bw+2*S, bh+2*S);
-  ctx.fillStyle = "#1b1233"; ctx.fillRect(bx, by, bw, bh);
-  const fw = Math.round(hold.p * (bw - 2*S) / S) * S;
-  ctx.fillStyle = "#58b4ff"; ctx.fillRect(bx+S, by+S, fw, bh-2*S);
-  ctx.fillStyle = "#bfe8ff"; ctx.fillRect(bx+S, by+S, fw, S);
-  for(let x = bx+S+6*S; x < bx+S+fw; x += 8*S){ ctx.fillStyle = "#f7f5ff"; ctx.fillRect(x, by+2*S, S, S); }   // little bubbles in the bar
-  ctx.font = "13px 'Pixelify Sans', monospace"; ctx.textBaseline = "alphabetic";
-  const label = "segura pra brincar…", lw = ctx.measureText(label).width;
-  const lx = Math.round(Math.max(4, Math.min(W - lw - 4, bx + bw/2 - lw/2)));
-  ctx.fillStyle = "#1b1233"; ctx.fillText(label, lx+1, by - 3*S + 1);
-  ctx.fillStyle = "#f7f5ff"; ctx.fillText(label, lx, by - 3*S);
+  const fw = Math.round(hold.p * W / S) * S;
+  ctx.fillStyle = "rgba(27,18,51,.75)"; ctx.fillRect(0, 0, W, 2*S);              // track
+  ctx.fillStyle = "#58b4ff"; ctx.fillRect(0, 0, fw, 2*S);                       // fill
+  ctx.fillStyle = "#bfe8ff"; ctx.fillRect(0, 0, fw, S);
+  if(fw > S) { ctx.fillStyle = "#f7f5ff"; ctx.fillRect(fw - S, 0, S, 2*S); }    // bright leading pixel
+  ctx.font = "12px 'Pixelify Sans', monospace"; ctx.textBaseline = "top";
+  const label = "segura pra brincar…", lw = ctx.measureText(label).width, lx = Math.round(W/2 - lw/2);
+  ctx.globalAlpha = Math.min(1, .35 + hold.p);
+  ctx.fillStyle = "#1b1233"; ctx.fillText(label, lx+1, 3*S+1);
+  ctx.fillStyle = "#f7f5ff"; ctx.fillText(label, lx, 3*S);
+  ctx.globalAlpha = 1; ctx.textBaseline = "alphabetic";
 }
 function noDefault(ev){ if(ev.cancelable) ev.preventDefault(); }
 if(cv.addEventListener){
@@ -841,12 +836,20 @@ const G = {
   el:null, cv:null, ctx:null, w:0, h:0, zoom:1, floor:0, raf:0, last:0,
   bodies:[], pool:[], live:0, splash:[], held:{ l:new Set(), r:new Set() }, emitAcc:{ l:0, r:0 },
   best:0, airborne:0, keyFn:null, visFn:null, hud:null, hudTxt:"",
+  aim:{ l:-50*Math.PI/180, r:-130*Math.PI/180 },          // jet angles (radians, screen coords: -90deg = straight up)
+  noz:{ l:{x:30,y:0}, r:{x:0,y:0} },                       // nozzle positions in world units
+  trans:null, aq:null,                                     // open/close transition state, aquarium rect at open
 };
+const AIM_MIN = -165*Math.PI/180, AIM_MAX = -15*Math.PI/180, AIM_DEFAULT = { l:-50*Math.PI/180, r:-130*Math.PI/180 };
 const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
 for(let i=0;i<G_MAX_BUB;i++) G.pool.push({ on:false, x:0, y:0, vx:0, vy:0, r:5, s:0, ph:0 });
 
+function stripH(){
+  const st = G.el && G.el.querySelector(".bg-strip"), r = st && st.getBoundingClientRect && st.getBoundingClientRect();
+  return r && r.height ? r.height : 130;
+}
 function gameSize(){
-  const vw = (window.innerWidth || 800), vh = (window.innerHeight || 600);
+  const vw = (window.innerWidth || 800), vh = Math.max(200, (window.innerHeight || 600) - stripH());   // water area sits above the control strip
   const targetH = Math.max(130, Math.min(260, Math.round(vw*0.26)));
   G.zoom = targetH / H;                                   // same css px per world unit as the aquarium
   G.w = Math.max(320, Math.ceil(vw / G.zoom / S) * S);
@@ -864,10 +867,9 @@ function gSay(b, text, dur){ b.say = text; b.sayT = dur || 70; }
 function gEmit(side){
   if(G.live >= G_MAX_BUB) return;
   const b = G.pool.find(q=>!q.on); if(!b) return;
-  const left = side === "l";
-  const ang = (left ? -40 : -140) * Math.PI/180 + (Math.random()-.5)*.3;
+  const ang = G.aim[side] + (Math.random()-.5)*.3, n = G.noz[side];
   const sp = 6.5 + Math.random()*2;
-  b.on = true; b.x = left ? 30 : G.w - 30; b.y = G.h - 22; b.vx = Math.cos(ang)*sp; b.vy = Math.sin(ang)*sp;
+  b.on = true; b.hits = 0; b.n = 0; b.x = n.x + Math.cos(G.aim[side])*10; b.y = n.y + Math.sin(G.aim[side])*10; b.vx = Math.cos(ang)*sp; b.vy = Math.sin(ang)*sp;
   b.s = Math.random()<.65 ? 0 : (Math.random()<.8 ? 1 : 2); b.r = [5,7,11][b.s]; b.ph = Math.random()*6; G.live++;
 }
 function gPop(b, big){
@@ -885,14 +887,17 @@ function gameStep(dt){
   }
   // bodies
   let air = 0;
-  G.bodies.forEach(c=>{
-    for(const b of G.pool){ if(!b.on) continue;
+  G.bodies.forEach((c, ci)=>{
+    const bit = 1 << ci;
+    for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
       const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
       if(dx*dx + dy*dy < rr*rr){
         const k = .07 + b.r*.007;
         c.vx += b.vx*k; c.vy += b.vy*k - .1;               // push along the bubble, mostly up
         c.rot += (b.vx*.01 + (dx>0?-.02:.02));
-        gPop(b, true);
+        b.hits |= bit; b.vx *= .8; b.vy *= .8;             // keeps flying, can hit the next character
+        if(G.splash.length < 220) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*1.6, vy:-.6, life:10 });
+        b.n = (b.n||0) + 1; if(b.n >= 3) gPop(b, true);
       }
     }
     c.vy += G_GRAV*dt; c.vx *= Math.pow(G_DRAG, dt); c.vy *= Math.pow(G_DRAG, dt);
@@ -925,12 +930,13 @@ function gameStep(dt){
 }
 function gameDraw(now){
   const k = G.ctx, w = G.w, h = G.h, tm = reduce ? 0 : now;
+  const groundDy = G.trans ? Math.round(G.trans.dy * (1 - G.trans.e) / S) * S : 0;   // world units the floor sits above its final spot
   // water: open water above, the aquarium's far layer anchored to the bottom
   const grad = k.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, "#2a64a8"); grad.addColorStop(.25, "#1d4f92"); grad.addColorStop(1, "#18468a");
   k.fillStyle = grad; k.fillRect(0, 0, w, h);
   const top = h - BG.far.height;
-  for(let x=0; x<w; x+=BG.far.width) k.drawImage(BG.far, x, top);
+  for(let x=0; x<w; x+=BG.far.width) k.drawImage(BG.far, x, top + groundDy);   // ridges ride with the floor
   k.save(); k.globalCompositeOperation = "lighter";
   for(let i=0;i<Math.max(3,Math.round(w/170));i++){ k.globalAlpha = .08 + .05*Math.sin(tm/1400+i*2.1);
     const rx = ((i+.35)/Math.max(3,Math.round(w/170)))*w + Math.sin(tm/5200+i*1.7)*24 - 40;
@@ -938,15 +944,22 @@ function gameDraw(now){
   k.restore();
   k.fillStyle = "rgba(190,230,255,.45)";
   for(let x=0;x<w;x+=26) k.fillRect(Math.round((x + Math.sin(tm/700 + x/40)*4)/S)*S, 2*S + (Math.round(x/26)%2)*S, 5*S, S);
-  for(let x=-40; x<w; x+=BG.mid.width) k.drawImage(BG.mid, x, top);
-  for(let x=0; x<w; x+=BG.fore.width) k.drawImage(BG.fore, x, top);
+  for(let x=-40; x<w; x+=BG.mid.width) k.drawImage(BG.mid, x, top + groundDy);
+  for(let x=0; x<w; x+=BG.fore.width) k.drawImage(BG.fore, x, top + groundDy);
+  if(groundDy < 0){ k.fillStyle = "#b8924e"; k.fillRect(0, h + groundDy, w, -groundDy); }   // sand below the rising floor
   // nozzles
-  [["l",30],["r",w-30]].forEach(([side,nx])=>{
-    k.save(); k.translate(nx, h-18); k.rotate(side==="l" ? .55 : -.55);
-    k.fillStyle = "#1b1233"; k.fillRect(-8, -16, 16, 22); k.fillStyle = G.held[side].size ? "#ffe066" : "#9fb4d9"; k.fillRect(-6, -14, 12, 18);
-    k.fillStyle = "#f7f5ff"; k.fillRect(-6, -14, 3, 18); k.restore(); });
+  ["l","r"].forEach(side=>{
+    const n = G.noz[side], on = G.held[side].size > 0, a = G.aim[side];
+    const step = Math.round((a + Math.PI/2) / (Math.PI/12)) * (Math.PI/12);   // snap to 15deg steps: chunky pixels
+    k.save(); k.translate(Math.round(n.x/S)*S, Math.round(n.y/S)*S + groundDy); k.rotate(step);
+    k.fillStyle = "#1b1233"; k.fillRect(-7, -18, 14, 22); k.fillRect(-9, 0, 18, 6);
+    k.fillStyle = on ? "#ffe066" : "#9fb4d9"; k.fillRect(-5, -16, 10, 18); k.fillStyle = on ? "#e0901c" : "#6b7182"; k.fillRect(-7, 2, 14, 2);
+    k.fillStyle = "#f7f5ff"; k.fillRect(-5, -16, 2, 18);
+    if(on){ k.fillStyle = "#bfe8ff"; k.fillRect(-2, -24, 4, 4); k.fillRect(-1, -30, 2, 2); }
+    k.restore(); });
   // crew
   const taken = [], heads = [];
+  k.save(); k.translate(0, groundDy);
   G.bodies.forEach(c=>{
     const sp = SPR[c.name] || SPR.octo, speed = Math.hypot(c.vx, c.vy);
     let fr;
@@ -963,10 +976,11 @@ function gameDraw(now){
     if(c.dizzy > 0){ for(let i=0;i<3;i++){ const a = tm/180 + i*2.094; drawStar(Math.round((c.x + Math.cos(a)*9*S)/S)*S, Math.round((c.y - 16*S + Math.sin(a)*3*S)/S)*S, i%2?P.W:P.yl, k); } }
     heads.push([c, c.x, c.y - 14*S]);
   });
+  k.restore();
   // bubbles + splashes
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
   k.fillStyle = "#bfe8ff"; G.splash.forEach(f=>k.fillRect(Math.round(f.x/S)*S, Math.round(f.y/S)*S, S, S));
-  heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y, taken, k, w); });
+  heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
   // HUD text lives in the DOM (crisp pixel font); update only when it changes
   const txt = "altura máxima: " + G.best.toFixed(1).replace(".", ",") + " m · bonequinhos no ar: " + G.airborne;
   if(G.hud && txt !== G.hudTxt){ G.hud.textContent = txt; G.hudTxt = txt; }
@@ -975,40 +989,82 @@ function gameLoop(now){
   if(!game.open){ G.raf = 0; return; }
   if(document.hidden){ G.last = now; G.raf = requestAnimationFrame(gameLoop); return; }   // paused while hidden
   const dt = Math.min(3, (now - G.last)/16.7 || 1); G.last = now;
-  gameStep(dt); gameDraw(now);
+  if(G.trans){ stepTrans(now); if(!game.open) return; gameDraw(now); }
+  else { gameStep(dt); gameDraw(now); }
   G.raf = requestAnimationFrame(gameLoop);
+}
+const TRANS_MS = 450;
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+// Clip the overlay to a band that grows from the aquarium's rect (e=0) to the full screen (e=1)
+function applyTrans(){
+  const T = G.trans, e = T.e, vh = window.innerHeight || 1;
+  // the control strip rides under the sand: it starts right below the aquarium floor and ends at the screen bottom
+  const lift = T.dy * (1 - e) * G.zoom;                                   // css px (negative = higher on screen)
+  const st = G.el.querySelector(".bg-strip");
+  if(st && st.style) st.style.transform = e >= 1 ? "" : "translateY(" + lift.toFixed(1) + "px)";
+  const top = T.r.top * (1 - e), bottom = Math.max(0, -lift);            // band: aquarium top -> screen top, strip bottom -> screen bottom
+  G.el.style.clipPath = e >= 1 ? "" : "inset(" + top.toFixed(1) + "px 0px " + bottom.toFixed(1) + "px 0px)";
+}
+function stepTrans(now){
+  const T = G.trans, raw = Math.min(1, (now - T.t0) / (reduce ? 1 : TRANS_MS));
+  T.e = T.dir > 0 ? easeOut(raw) : 1 - easeOut(raw);
+  applyTrans();
+  if(raw >= 1){
+    if(T.dir > 0){ G.trans = null; G.el.classList.add("ready"); G.el.style.clipPath = ""; measureNozzles(); }
+    else finishClose();
+  }
+}
+function measureNozzles(){
+  const z = G.zoom;
+  G.el.querySelectorAll(".bg-jet").forEach(btn=>{
+    const side = btn.dataset.side, r = btn.getBoundingClientRect && btn.getBoundingClientRect();
+    // nozzle sits on the sand above the pad's column so jets start at the crew's feet
+    const nx = r && r.width ? (r.left + r.width/2)/z : (side === "l" ? 50 : G.w - 50);
+    G.noz[side] = { x: nx, y: G.floor - 4 };
+  });
 }
 function openGame(){
   if(game.open) return;
   G.el = document.getElementById("bubbleGame"); if(!G.el) return;
   G.cv = G.el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = G.el.querySelector(".bg-hud");
-  game.open = true; game.expanding = true;
-  gameSize(); gameReset();
+  game.open = true;
+  hold.id = null; hold.shown = 0; hold.p = 0;
   document.documentElement.classList.add("bg-lock");
-  // expansion: start clipped to the aquarium's rectangle, grow to the whole viewport
-  const r = cv.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
-  G.el.style.transition = "none";
-  G.el.style.clipPath = "inset(" + Math.max(0,r.top) + "px " + Math.max(0,vw-r.right) + "px " + Math.max(0,vh-r.bottom) + "px " + Math.max(0,r.left) + "px)";
   G.el.hidden = false; G.el.classList.remove("ready");
+  gameSize(); gameReset(); measureNozzles();
+  G.aim.l = AIM_DEFAULT.l; G.aim.r = AIM_DEFAULT.r;
+  // crew starts exactly where it stands in the aquarium
+  const r = cv.getBoundingClientRect(), z = G.zoom;
+  G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (r.left + (a.x + lastOffFg + SPR_W*S/2) * r.width / W) / z; c.dir = a.dir; });
+  const aqFloor = (r.top + FLOOR * r.height / H) / z;                    // aquarium floor in game world units
+  G.trans = { dir:1, t0:performance.now(), e:0, r:{ top:r.top, bottom:r.bottom }, dy: aqFloor - G.floor };
+  applyTrans();
   G.last = performance.now(); gameDraw(G.last);
-  void G.el.offsetWidth;
-  G.el.style.transition = reduce ? "none" : "clip-path 300ms cubic-bezier(.2,.8,.2,1)";
-  G.el.style.clipPath = "inset(0px 0px 0px 0px)";
-  setTimeout(()=>{
-    game.expanding = false; G.el.classList.add("ready"); G.el.style.clipPath = "";
-    try{ const fs = G.el.requestFullscreen && G.el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
-  }, reduce ? 0 : 310);
-  G.raf = requestAnimationFrame(gameLoop);
+  try{ const fs = G.el.requestFullscreen && G.el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
+  if(!G.raf) G.raf = requestAnimationFrame(gameLoop);
 }
 function closeGame(){
-  if(!game.open) return;
-  game.open = false; game.expanding = false;
-  if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
+  if(!game.open || (G.trans && G.trans.dir < 0)) return;
   G.held.l.clear(); G.held.r.clear();
-  G.el.hidden = true; G.el.classList.remove("ready");
-  document.documentElement.classList.remove("bg-lock");
+  G.el.querySelectorAll(".bg-jet").forEach(b=>b.classList.remove("on"));
+  G.el.classList.remove("ready");
   try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
-  actors.forEach(a=>{ a.state = "walk"; a.t = 0; a.target = null; });
+  // the crew lands, then the floor rises back into the aquarium
+  G.bodies.forEach(c=>{ c.y = G.floor - G_FEET; c.vx = c.vy = 0; c.rot = 0; c.say = null; });
+  const r = cv.getBoundingClientRect(), aqFloor = (r.top + FLOOR * r.height / H) / G.zoom;
+  G.trans = { dir:-1, t0:performance.now(), e:1, r:{ top:r.top, bottom:r.bottom }, dy: aqFloor - G.floor };
+  if(!G.raf) G.raf = requestAnimationFrame(gameLoop);
+}
+function finishClose(){
+  game.open = false; G.trans = null;
+  if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
+  G.el.hidden = true; G.el.style.clipPath = "";
+  document.documentElement.classList.remove("bg-lock");
+  // hand the crew back to the aquarium at matching x positions
+  const r = cv.getBoundingClientRect();
+  G.bodies.forEach((c,i)=>{ const a = actors[i]; if(!a) return;
+    a.x = Math.max(2, Math.min(W - SPR_W*S - 2, (c.x * G.zoom - r.left) * W / (r.width || 1) - lastOffFg - SPR_W*S/2));
+    a.dir = c.dir; a.state = "walk"; a.t = 0; a.target = null; });
   makeSay(pick(actors), pick(["que viagem!","de novo! de novo!","tô todo molhado","uau!"]), 120);
   last = performance.now(); dirty = true;
 }
@@ -1020,12 +1076,23 @@ function closeGame(){
   gcv.addEventListener("pointerdown", noDefault);
   el.querySelectorAll(".bg-jet").forEach(btn=>{
     const side = btn.dataset.side;
-    btn.addEventListener("pointerdown", ev=>{ noDefault(ev); G.held[side].add(ev.pointerId); btn.classList.add("on"); try{ btn.setPointerCapture(ev.pointerId); }catch(e){} });
-    const up = ev=>{ G.held[side].delete(ev.pointerId); if(!G.held[side].size) btn.classList.remove("on"); };
+    const setAim = a => { G.aim[side] = a; if(btn.style && btn.style.setProperty) btn.style.setProperty("--aim", (a*180/Math.PI + 90).toFixed(1) + "deg"); };
+    const aimFrom = ev => {   // analog: angle from the pad's center to the thumb, clamped to a 150deg upward arc
+      const r = btn.getBoundingClientRect(), dx = ev.clientX - (r.left + r.width/2), dy = ev.clientY - (r.top + r.height/2);
+      if(Math.hypot(dx, dy) < r.width*.12){ setAim(AIM_DEFAULT[side]); return; }
+      let a = Math.atan2(dy, dx);
+      if(a > 0) a = dx >= 0 ? AIM_MAX : AIM_MIN;            // thumb below center: pin to the nearest arc end
+      setAim(Math.max(AIM_MIN, Math.min(AIM_MAX, a)));
+    };
+    setAim(AIM_DEFAULT[side]);
+    btn.addEventListener("pointerdown", ev=>{ noDefault(ev); if(G.trans) return; G.held[side].add(ev.pointerId); btn.classList.add("on"); aimFrom(ev); try{ btn.setPointerCapture(ev.pointerId); }catch(e){} });
+    btn.addEventListener("pointermove", ev=>{ if(G.held[side].has(ev.pointerId)) aimFrom(ev); });
+    const up = ev=>{ G.held[side].delete(ev.pointerId); if(!G.held[side].size){ btn.classList.remove("on"); setAim(AIM_DEFAULT[side]); } };
     ["pointerup","pointercancel","lostpointercapture"].forEach(t=>btn.addEventListener(t, up));
   });
   el.querySelector(".bg-close").addEventListener("click", closeGame);
   window.addEventListener("keydown", ev=>{ if(ev.key === "Escape" && game.open) closeGame(); });
-  window.addEventListener("resize", ()=>{ if(game.open){ const ox = G.w; gameSize(); G.bodies.forEach(c=>{ c.x = c.x / ox * G.w; c.y = Math.min(c.y, G.floor - G_FEET); }); } });
-  document.addEventListener("fullscreenchange", ()=>{ if(game.open) gameSize(); });
+  const refit = ()=>{ if(game.open && !G.trans){ const ox = G.w; gameSize(); measureNozzles(); G.bodies.forEach(c=>{ c.x = c.x / ox * G.w; c.y = Math.min(c.y, G.floor - G_FEET); }); } };
+  window.addEventListener("resize", refit);
+  document.addEventListener("fullscreenchange", refit);
 })();
