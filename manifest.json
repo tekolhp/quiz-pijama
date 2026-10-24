@@ -1,0 +1,9 @@
+{
+  "name": "Festa do Pijama no Fundo do Mar",
+  "short_name": "Festa do Pijama",
+  "start_url": "./",
+  "display": "fullscreen",
+  "background_color": "#0b1a3a",
+  "theme_color": "#0b1a3a",
+  "orientation": "portrait"
+}

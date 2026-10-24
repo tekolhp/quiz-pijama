@@ -828,6 +828,7 @@ if(cv.addEventListener){
   };
   cv.addEventListener("pointerup", release);
   cv.addEventListener("pointercancel", release);
+  cv.addEventListener("pointerup", ()=>{ if(game.open) enterFs(); });
 }
 
 function sceneReact(ok){
@@ -1287,7 +1288,7 @@ function stepClose(now){
     T.groundDy = 0;
     if(t >= 1 && G.bodies.every(c=>c.landed)){
       T.phase = "settle"; T.ts = now; T.frames = 0;
-      try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } else T.fsDone = true; }catch(e){ T.fsDone = true; }
+      try{ if((document.fullscreenElement || document.webkitFullscreenElement) && (document.exitFullscreen || document.webkitExitFullscreen)){ const ex = document.exitFullscreen || document.webkitExitFullscreen; const p = ex.call(document); if(p && p.catch) p.catch(()=>{}); } else T.fsDone = true; }catch(e){ T.fsDone = true; }
     }
     return;
   }
@@ -1339,6 +1340,19 @@ function measureNozzles(){
     G.noz[side] = { x: nx, y: G.floor - 4 };
   });
 }
+// Fullscreen needs a recent user gesture. We try when the hold completes, again on the finger
+// lift that ends the hold, and on any touch inside the game until it sticks.
+function isFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function enterFs(){
+  if(isFs() || !game.open) return;
+  const root = document.documentElement;
+  try{
+    const req = root.requestFullscreen || root.webkitRequestFullscreen;
+    if(!req) return;
+    const p = req.call(root, { navigationUI:"hide" });
+    if(p && p.catch) p.catch(()=>{});
+  }catch(e){}
+}
 function openGame(){
   if(game.open || G.opening) return;                       // guard: hold completing while already opening/closing
   const el = document.getElementById("bubbleGame"); if(!el) return;
@@ -1359,7 +1373,7 @@ function openGame(){
     applyTrans();
     G.last = performance.now(); gameDraw(G.last);
     kickGame();
-    try{ const fs = el.requestFullscreen && el.requestFullscreen({ navigationUI:"hide" }); if(fs && fs.catch) fs.catch(()=>{}); }catch(e){}
+    enterFs();
   }catch(err){
     if(window.console) console.error("openGame", err);
     finishClose();
@@ -1400,7 +1414,7 @@ function finishClose(smooth){
   try{ setPage(null, null); }catch(e){}
   document.documentElement.classList.remove("bg-lock");
   if(document.body && document.body.classList) document.body.classList.remove("bg-lock");
-  try{ if(document.fullscreenElement && document.exitFullscreen){ const p = document.exitFullscreen(); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
+  try{ if((document.fullscreenElement || document.webkitFullscreenElement) && (document.exitFullscreen || document.webkitExitFullscreen)){ const ex = document.exitFullscreen || document.webkitExitFullscreen; const p = ex.call(document); if(p && p.catch) p.catch(()=>{}); } }catch(e){}
   if(!wasHandoff){
     // abrupt path (error / self-heal): put everything back in a sane state and redraw now
     try{ fitScene(); }catch(e){}
@@ -1443,6 +1457,8 @@ function finishClose(smooth){
     if(G.trans && G.trans.dir < 0){ if(!document.fullscreenElement) G.trans.fsDone = true; relayoutGame(); try{ gameDraw(performance.now()); }catch(e){} return; }
     relayoutGame(); kickGame();
   };
+  el.addEventListener("pointerdown", ()=>enterFs(), true);
+  el.addEventListener("touchend", ()=>enterFs(), true);
   document.addEventListener("fullscreenchange", onFs);
   document.addEventListener("webkitfullscreenchange", onFs);
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ dirty = true; if(game.open) kickGame(); else kickMain(); } });
