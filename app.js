@@ -381,6 +381,12 @@ function renderRank(ol, list){
   ol.innerHTML="";
   list.forEach((x,i)=>{ const li=el("li"); li.style.setProperty("--team",x.color); li.append(el("span","pos",(i+1)+"º"), el("i","dot"), el("span",null,x.team), el("span","pts",x.score+" pts")); ol.append(li); });
 }
+$("#btnDissolve").addEventListener("click", ()=>{ $("#btnDissolveConfirm").hidden=false; setTimeout(()=>{ $("#btnDissolveConfirm").hidden=true; }, 6000); });
+$("#btnDissolveConfirm").addEventListener("click", ()=>{
+  send("kick",{});
+  setTimeout(()=>{ Object.values(conns).forEach(c=>{ try{ c.close(); }catch(e){} }); conns={}; if(peer){ try{ peer.destroy(); }catch(e){} peer=null; }
+    stopTimer(); host.teams={}; host.deck=[]; host.phase="lobby"; host.code=null; clearHost(); $("#btnResume").hidden=true; show("home"); }, 400);
+});
 $("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
 $("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
@@ -410,6 +416,7 @@ async function joinRoom(code){
     pause: p => { if(p.idx!==player.idx) return; stopCountdown(); const c=$("#pClock"); c.textContent=p.left+"s · pausado"; c.classList.add("paused"); c.classList.remove("warn"); $("#ptbar").classList.remove("warn"); makeSay(pick(actors),"pausa!",100); },
     reveal: p => playerReveal(p),
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
+    kick: () => { store(PLAYER_KEY, undefined); stopCountdown(); player.code=null; if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; $("#inCode").value=""; msg("#joinMsg","O host desfez a sala. Valeu por jogar!"); show("playerJoin"); },
     lobby: () => { player.idx=-1; $("#pScoresCard").hidden=true; $("#pTeamsCard").hidden=false; waitLobby(); },
   }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; return msg("#joinMsg","Não achei essa sala. Confere o código e se o host já criou a sala."); }
   $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar";

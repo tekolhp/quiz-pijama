@@ -209,6 +209,12 @@ textarea:focus-visible{outline:3px solid var(--accent)}
     </div>
     <button class="btn primary" id="btnStart" type="button" disabled>Começar</button>
     <p class="lead" id="lobbyMsg" hidden></p>
+    <div class="card">
+      <p class="label">Desfazer a sala</p>
+      <p class="small">Expulsa todo mundo e apaga as equipes. Pra jogar de novo com os mesmos grupos, não precisa: é só "Voltar pra sala e jogar de novo".</p>
+      <button class="btn" id="btnDissolve" type="button">Desfazer a sala e expulsar todo mundo</button>
+      <button class="btn" id="btnDissolveConfirm" type="button" hidden style="border-color:var(--bad);color:var(--bad)">Confirma: desfazer a sala</button>
+    </div>
   </div>
 </section>
 
@@ -263,7 +269,7 @@ textarea:focus-visible{outline:3px solid var(--accent)}
     </div>
     <div class="card" id="pTeamsCard"><p class="label">Na sala</p><div class="scores" id="pTeams"></div></div>
     <div class="card" id="pScoresCard" hidden><p class="label">Placar</p><div class="scores" id="pScores"></div></div>
-    <button class="btn ghost" id="btnLeave" type="button">Sair</button>
+    <button class="btn ghost" id="btnLeave" type="button" hidden>Sair</button>
   </div>
 </section>
 
