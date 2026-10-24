@@ -35,16 +35,25 @@ let conns = {};             // host: peerId -> DataConnection
 let hostConn = null;        // player: connection to the host
 let handlers = {};
 function dispatch(ev, payload){ if(handlers[ev]) handlers[ev](payload); }
+const PEER_OPTS = { debug:1, pingInterval:3000 };
 function newPeer(id){
   if(peer){ try{ peer.destroy(); }catch(e){} }
-  peer = id ? new Peer(id, { debug:1 }) : new Peer({ debug:1 });
+  peer = id ? new Peer(id, PEER_OPTS) : new Peer(PEER_OPTS);
   return new Promise((res,rej)=>{ peer.on("open", ()=>res(peer)); peer.on("error", e=>rej(e)); });
 }
+// Keep this device registered on the signaling server: if the socket drops (background tab, wifi blink), reconnect.
+function keepRegistered(){
+  if(!peer) return;
+  peer.on("disconnected", ()=>{ if(peer && !peer.destroyed){ setTimeout(()=>{ try{ peer.reconnect(); }catch(e){} }, 500); } });
+}
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && peer && peer.disconnected && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} } });
+async function withRetry(fn, tries, delayMs){ let err; for(let i=0;i<tries;i++){ try{ return await fn(); }catch(e){ err=e; await new Promise(r=>setTimeout(r,delayMs)); } } throw err; }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && host.timer) tick(); });
 // host side
 async function openHost(code, h){
   handlers=h; conns={};
-  await newPeer(PEER_PREFIX+code);
+  await withRetry(()=>newPeer(PEER_PREFIX+code), 4, 2500);   // a stale id from a reload clears within seconds
+  keepRegistered();
   peer.on("connection", c=>{
     c.on("open", ()=>{ conns[c.peer]=c; });
     c.on("data", d=>{ if(d && d.ev) dispatch(d.ev, d.payload); });
@@ -52,19 +61,24 @@ async function openHost(code, h){
     c.on("error", ()=>{ delete conns[c.peer]; });
   });
   peer.on("error", e=>{ if(e.type==="unavailable-id") msg("#lobbyMsg","Esse código já está em uso. Cria a sala de novo."); });
+  $("#hostStatus").textContent="Sala online";
+  peer.on("disconnected", ()=>{ $("#hostStatus").textContent="Reconectando a sala…"; });
+  peer.on("open", ()=>{ $("#hostStatus").textContent="Sala online"; });
 }
 // player side
 async function openPlayer(code, h){
   handlers=h;
-  await newPeer(null);
-  return new Promise((res,rej)=>{
+  await withRetry(()=>newPeer(null), 3, 1500);
+  keepRegistered();
+  return withRetry(()=>new Promise((res,rej)=>{
     const c = peer.connect(PEER_PREFIX+code, { reliable:true });
-    const t = setTimeout(()=>rej(new Error("timeout")), 12000);
+    const t = setTimeout(()=>rej(new Error("timeout")), 8000);
     c.on("open", ()=>{ clearTimeout(t); hostConn=c; res(); });
     c.on("data", d=>{ if(d && d.ev) dispatch(d.ev, d.payload); });
     c.on("close", ()=>{ hostConn=null; reconnectLoop(code); });
-    peer.on("error", e=>{ clearTimeout(t); rej(e); });
-  });
+    const onErr = e=>{ clearTimeout(t); peer.off("error", onErr); rej(e); };
+    peer.on("error", onErr);
+  }), 4, 2000);
 }
 let reconnecting=false;
 async function reconnectLoop(code){
