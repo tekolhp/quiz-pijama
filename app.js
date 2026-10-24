@@ -383,7 +383,7 @@ async function joinRoom(code){
     pause: p => { if(p.idx!==player.idx) return; stopCountdown(); const c=$("#pClock"); c.textContent=p.left+"s · pausado"; c.classList.add("paused"); c.classList.remove("warn"); $("#ptbar").classList.remove("warn"); makeSay(pick(actors),"pausa!",100); },
     reveal: p => playerReveal(p),
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
-    lobby: () => { player.idx=-1; waitLobby(); },
+    lobby: () => { player.idx=-1; $("#pScoresCard").hidden=true; $("#pTeamsCard").hidden=false; waitLobby(); },
   }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; return msg("#joinMsg","Não achei essa sala. Confere o código e se o host já criou a sala."); }
   $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar";
   send("join",{ id:player.id });
@@ -405,6 +405,7 @@ function applyTeams(teams){
     if(!was?.ok && me.ok){ sceneReact(true); }
   }
   if(player.idx<0) waitLobby();
+  $("#pTeamsCard").hidden = player.idx>=0;
   const box=$("#pTeams"); box.innerHTML="";
   Object.entries(teams||{}).forEach(([id,t])=>{ box.append(teamChip(t, (id===player.id?" active":"")+(t.ok?" hit":""))); });
 }
@@ -415,6 +416,8 @@ function waitLobby(){
   show("playerWait");
 }
 function renderPlayerScores(list){
+  const playing = player.idx>=0;
+  $("#pTeamsCard").hidden = playing; $("#pScoresCard").hidden = !playing || !(list&&list.length);
   const box=$("#pScores"); box.innerHTML="";
   (list||[]).forEach(x=>{ const c=teamChip({name:x.team,color:x.color}, x.id===player.id?" active":""); c.append(el("em",null,x.score)); box.append(c); });
 }
