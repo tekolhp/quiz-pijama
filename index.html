@@ -115,10 +115,12 @@ body.teamed{background:transparent;background-image:none}
 body.teamed .card{border-color:var(--team)}
 .teamname{font-family:var(--display);font-size:14px;color:var(--team);text-shadow:2px 2px 0 #000;line-height:1.6}
 .code{font-family:var(--display);font-size:clamp(34px,12vw,56px);letter-spacing:.2em;color:var(--accent);text-shadow:4px 4px 0 #000;text-align:center;padding:10px 0}
-.qr{background:#fff;border:3px solid #000;box-shadow:6px 6px 0 #000;width:min(72vw,300px);aspect-ratio:1;margin:10px auto 6px;padding:10px}
+/* QR in the site palette: navy modules on sand, still dark-on-light with high contrast so every reader gets it */
+.qr{--qr-ink:var(--bg);--qr-paper:var(--fg);background:var(--qr-paper);border:4px solid var(--accent);box-shadow:6px 6px 0 #000;width:min(72vw,300px);aspect-ratio:1;margin:10px auto 6px;padding:10px}
 .qr svg{display:block;width:100%;height:100%}
+.qr svg rect{fill:var(--qr-paper)}
+.qr svg path{fill:var(--qr-ink)}
 .center{text-align:center}
-.url{font-size:15px;color:var(--muted);word-break:break-all;user-select:all}
 input.big{font-family:var(--display);font-size:22px;letter-spacing:.3em;text-transform:uppercase;text-align:center;padding:14px}
 textarea{font:inherit;font-size:20px;padding:12px;border:3px solid var(--line);background:var(--bg);color:var(--fg);width:100%;min-width:0;border-radius:0;resize:vertical;min-height:70px}
 textarea:focus-visible{outline:3px solid var(--accent)}
@@ -207,8 +209,7 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
       <div class="qr" id="roomQr" role="img" aria-label="QR code pra entrar na sala"></div>
       <p class="small center">Ou digita o código</p>
       <div class="code" id="roomCode"></div>
-      <p class="url" id="joinUrl"></p>
-      <button class="btn ghost" id="copyUrl" type="button" style="padding:6px 10px;font-size:15px">Copiar link</button>
+      <div class="center"><button class="btn ghost" id="copyUrl" type="button" style="padding:6px 10px;font-size:15px">Copiar link</button></div>
       <p class="small" id="hostStatus"></p>
     </div>
     <div class="card">

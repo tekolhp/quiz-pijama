@@ -191,9 +191,8 @@ async function startHost(saved){
   }catch(e){ $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)"; return msg("#homeMsg","Não consegui abrir a sala. Confere a internet e tenta de novo."); }
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
-  const joinUrl = location.origin + location.pathname + "?sala=" + host.code;
-  $("#joinUrl").textContent = joinUrl;
-  renderQr($("#roomQr"), joinUrl);
+  host.joinUrl = location.origin + location.pathname + "?sala=" + host.code;
+  renderQr($("#roomQr"), host.joinUrl);
   renderThemes(); renderTeamList(); renderCustom();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
@@ -246,8 +245,11 @@ function renderQr(box, text){
   catch(e){ box.hidden=true; }
 }
 $("#copyUrl").addEventListener("click", async ()=>{
-  const t=$("#joinUrl").textContent;
-  try{ await navigator.clipboard.writeText(t); $("#copyUrl").textContent="Copiado!"; }catch(e){ const r=document.createRange(); r.selectNodeContents($("#joinUrl")); getSelection().removeAllRanges(); getSelection().addRange(r); }
+  const t=host.joinUrl; let ok=false;
+  try{ await navigator.clipboard.writeText(t); ok=true; }catch(e){
+    const ta=el("textarea"); ta.value=t; ta.setAttribute("readonly",""); ta.style.cssText="position:fixed;opacity:0"; document.body.append(ta); ta.select();   // older browsers / no HTTPS
+    try{ ok=document.execCommand("copy"); }catch(e2){} ta.remove(); }
+  $("#copyUrl").textContent = ok ? "Copiado!" : "Não deu pra copiar";
   setTimeout(()=>$("#copyUrl").textContent="Copiar link",1500);
 });
 
