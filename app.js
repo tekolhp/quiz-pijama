@@ -112,7 +112,11 @@ function loadCustom(){ const c=load(CUSTOM_KEY); return Array.isArray(c)?c:[]; }
 (()=>{
   if(typeof FAMILY_SEED==="undefined" || (load("quiz.familySeed")||0) >= FAMILY_SEED_VERSION) return;
   const key=t=>String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
-  const c=loadCustom(); const have=new Set(c.map(q=>key(q[0])));
+  let c=loadCustom();
+  // v1 had the answer options inside the question text ("…? (A, B ou C)"): drop those so the new plain ones replace them
+  const plain=FAMILY_SEED.map(q=>key(q[0]));
+  c=c.filter(q=>{ const k=key(q[0]); return !plain.some(p=>k!==p && k.startsWith(p+" ")); });
+  const have=new Set(c.map(q=>key(q[0])));
   FAMILY_SEED.forEach(q=>{ if(!have.has(key(q[0]))){ c.push(q.slice()); have.add(key(q[0])); } });
   store(CUSTOM_KEY,c); store("quiz.familySeed", FAMILY_SEED_VERSION);
 })();
