@@ -107,6 +107,15 @@ const qAlts = q => q.slice(2).filter(x=>typeof x==="string");
 const CUSTOM_THEME = "Perguntas da família";
 const CUSTOM_KEY = "quiz.custom";
 function loadCustom(){ const c=load(CUSTOM_KEY); return Array.isArray(c)?c:[]; }
+// The family's own questions ship with the site and are added once per device (a newer FAMILY_SEED_VERSION adds the new ones).
+// They land in the editable list, so the host can still change or remove them; ones already there are not duplicated.
+(()=>{
+  if(typeof FAMILY_SEED==="undefined" || (load("quiz.familySeed")||0) >= FAMILY_SEED_VERSION) return;
+  const key=t=>String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+  const c=loadCustom(); const have=new Set(c.map(q=>key(q[0])));
+  FAMILY_SEED.forEach(q=>{ if(!have.has(key(q[0]))){ c.push(q.slice()); have.add(key(q[0])); } });
+  store(CUSTOM_KEY,c); store("quiz.familySeed", FAMILY_SEED_VERSION);
+})();
 function syncCustom(){ const c=loadCustom(); if(c.length) BANK[CUSTOM_THEME]=c; else delete BANK[CUSTOM_THEME]; }
 let editingCustom = -1;
 function renderCustom(){
