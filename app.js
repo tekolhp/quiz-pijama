@@ -191,7 +191,9 @@ async function startHost(saved){
   }catch(e){ $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)"; return msg("#homeMsg","Não consegui abrir a sala. Confere a internet e tenta de novo."); }
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
-  $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
+  const joinUrl = location.origin + location.pathname + "?sala=" + host.code;
+  $("#joinUrl").textContent = joinUrl;
+  renderQr($("#roomQr"), joinUrl);
   renderThemes(); renderTeamList(); renderCustom();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
@@ -237,6 +239,12 @@ $("#level").addEventListener("click", e=>{
 });
 function renderLevels(){ $("#level").querySelectorAll("button[data-l]").forEach(x=>{ const l=x.dataset.l; x.setAttribute("aria-pressed", l==="all" ? host.levels.length===3 : host.levels.includes(+l)); }); }
 $("#timer").addEventListener("click", e=>{ const b=e.target.closest("button[data-t]"); if(!b) return; host.secs=+b.dataset.t; saveHost(); $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+function renderQr(box, text){
+  box.textContent="";
+  if(typeof qrcode!=="function"){ box.hidden=true; return; }   // CDN failed: the code and link still work
+  try{ const q=qrcode(0,"M"); q.addData(text); q.make(); box.innerHTML=q.createSvgTag({ cellSize:4, margin:0, scalable:true }); box.hidden=false; }
+  catch(e){ box.hidden=true; }
+}
 $("#copyUrl").addEventListener("click", async ()=>{
   const t=$("#joinUrl").textContent;
   try{ await navigator.clipboard.writeText(t); $("#copyUrl").textContent="Copiado!"; }catch(e){ const r=document.createRange(); r.selectNodeContents($("#joinUrl")); getSelection().removeAllRanges(); getSelection().addRange(r); }
@@ -427,7 +435,9 @@ async function joinRoom(code){
 }
 // Reload or reopen: go straight back into the room (same team, same color)
 (()=>{ const sv=load(PLAYER_KEY); const fromUrl=(params.get("sala")||"").toUpperCase();
-  if(sv && sv.code && Date.now()-sv.at < 6*3600e3 && (!fromUrl || fromUrl===sv.code) && !savedHost){ $("#inCode").value=sv.code; show("playerJoin"); joinRoom(sv.code); } })();
+  if(sv && sv.code && Date.now()-sv.at < 6*3600e3 && (!fromUrl || fromUrl===sv.code) && !savedHost){ $("#inCode").value=sv.code; show("playerJoin"); joinRoom(sv.code); }
+  else if(fromUrl.length===4 && !savedHost) joinRoom(fromUrl);   // came from the QR code: no need to tap Entrar
+})();
 function applyTeams(teams){
   const me = teams?.[player.id]; const was = player.me;
   player.me = me || null;
