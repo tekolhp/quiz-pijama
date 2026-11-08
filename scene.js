@@ -914,7 +914,7 @@ const G = {
   sub:null, subCd:0, subBub:[], floats:[],                 // rescue sub event
 };
 const AIM_MIN = -165*Math.PI/180, AIM_MAX = -15*Math.PI/180, AIM_DEFAULT = { l:-50*Math.PI/180, r:-130*Math.PI/180 };
-const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
+const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .034, G_DRAG = .988, G_BODY_R = 19;   // slow, floaty water
 const G_COL_R = SPR_W*S/2 - 2, G_COL_REST = .6, G_COL_ITERS = 4, G_COL_SLOP = .6, G_COL_HIT = 2.2;   // body-body collisions
 const HIT_LINES = ["POF!","ui!","sai!","ai!","opa!"];
 const PUSH_LINES = ["ei!","para com isso!","tá molhando!","uiii!","socorro!","kkkkk","de novo!","tô voando!","me põe no chão!","essa foi alta"];
@@ -926,7 +926,7 @@ let gLaunched = 0, gEjected = 0, gRescued = 0;             // session totals for
 // ---------- "Resgate do submarino" event: sprites ----------
 // Original chunky rescue sub (side view, nose right), 64x32 art px; prop spins over 3 frames.
 const SUB_W = 64, SUB_H = 32, SUB_WINCH = [32.5, 30.5], SUB_LAMP = [61, 20], SUB_TAIL = [1, 19];   // art px (right-facing)
-const ROPE_LEN = 30*S, HOOK_SLOTS = [-9, 1, 11], RING_UP = 17*S, LATCH_R = 10*S, HANG_MAX = 3;
+const ROPE_LEN = 30*S, HOOK_SLOTS = [-20, 1, 22], RING_UP = 17*S, LATCH_R = 13*S, HANG_MAX = 3;
 const SUB_LINES = ["o submarino!","resgate!","me leva!","olha lá!"];
 const BEG_LINES = ["me leva!","aqui! aqui!","eu! eu!","me escolhe!","socorro! (feliz)"];
 const CATCH_LINES = ["peguei!","me salvaram!","uhuuu!"];
@@ -974,10 +974,10 @@ const SUB = (()=>{
   for(let x=0;x<CW;x++){ const half = 2 + x*.42, k = 1 - x/CW;
     for(let y=0;y<CH;y++){ const d = Math.abs(y + .5 - CH/2) / half; if(d < 1 && dither(x,y, Math.min(1, k*1.1)*(1 - d*d))) px(cone,x,y, x < 14 && d < .5 ? "#fff8dc" : "#ffe9a8"); } }
   // hook bar: eyelet on top, three J hooks (ring hangs inside the J)
-  const hk = grid(26, 10);
-  ell(hk,12.5,1.5,1.6,1.6,G1); px(hk,12,1,null); px(hk,13,1,null);
-  rect(hk,1,3,24,2,G1); rect(hk,1,4,24,1,G2);
-  [1,11,21].forEach(x=>{ rect(hk,x+1,5,1,3,G1); px(hk,x+1,8,G2); px(hk,x+2,9,G2); px(hk,x+3,8,G1); px(hk,x+3,7,G1); });
+  const hk = grid(48, 10);
+  ell(hk,23.5,1.5,1.6,1.6,G1); px(hk,23,1,null); px(hk,24,1,null);
+  rect(hk,1,3,45,2,G1); rect(hk,1,4,45,1,G2);
+  [1,22,43].forEach(x=>{ rect(hk,x+1,5,1,3,G1); px(hk,x+1,8,G2); px(hk,x+2,9,G2); px(hk,x+3,8,G1); px(hk,x+3,7,G1); });
   outline(hk,P.K);
   // lifebuoy held overhead (red/white float + two little arms), one per character colour
   const ARM = { octo:P.o1, puffer:P.y1, horse:P.g1, jelly:P.p1, crab:P.r1, ghost:P.s1, star:P.t1, racc:P.u1 };
@@ -1095,7 +1095,7 @@ function gEmit(side){
   if(G.live >= G_MAX_BUB) return;
   const b = G.pool.find(q=>!q.on); if(!b) return;
   const ang = G.aim[side] + (Math.random()-.5)*.3, n = G.noz[side];
-  const sp = 6.5 + Math.random()*2;
+  const sp = 4 + Math.random()*1.2;                       // calmer: bubbles drift out of the cannon
   b.on = true; b.hits = 0; b.n = 0; b.x = n.x + Math.cos(G.aim[side])*10; b.y = n.y + Math.sin(G.aim[side])*10; b.vx = Math.cos(ang)*sp; b.vy = Math.sin(ang)*sp;
   b.s = Math.random()<.65 ? 0 : (Math.random()<.8 ? 1 : 2); b.r = [5,7,11][b.s]; b.ph = Math.random()*6; G.live++; gLaunched++;
 }
@@ -1119,11 +1119,6 @@ function stepBubbles(dt, popChance){
 function stepPfx(dt){
   const X = pfx(); if(!X) return;
   // water jets follow the analog aim while a pad is held
-  ["l","r"].forEach(side=>{
-    if(G.held[side].size){ const n = G.noz[side], a = G.aim[side];
-      X.loop("gback", "jet-"+side, "jet", { x:n.x + Math.cos(a)*14, y:n.y + Math.sin(a)*14, angle:a, length:64, light:.7, seed: side === "l" ? 3 : 7 }); }
-    else X.stopLoop("gback", "jet-"+side);
-  });
   // a fish school cruises across now and then
   const sc = G.school;
   if(sc){ sc.x += sc.dir*.35*dt;
@@ -1145,14 +1140,14 @@ function ejectJuice(c, text){
 // ---------- "Resgate do submarino" event: logic ----------
 // A rescue sub crosses mid-water now and then; the crew holds up lifebuoys and the players blast them
 // up to its hook. Whoever is still hanging when it leaves the screen counts as rescued.
-const SUB_FIRST = 12*60, SUB_EVERY = [25*60, 40*60], SUB_CROSS = [10*60, 14*60];   // frames (60 fps units)
+const SUB_FIRST = 12*60, SUB_EVERY = [25*60, 40*60], SUB_CROSS = [17*60, 23*60];   // frames (60 fps units)
 const HANG_SLIP = .003, HANG_KNOCK = 3, HANG_DY = 9*S;      // per-bubble fall chance, impact speed that knocks off, ring below the eyelet
 function subArtX(s, ax){ return s.x - SUB_W*S/2 + (s.dir > 0 ? ax : SUB_W - ax)*S; }
 function subArtY(s, ay){ return s.y - SUB_H*S/2 + ay*S; }
 function spawnSub(){
   const dir = Math.random() < .5 ? 1 : -1, span = G.w + SUB_W*S + 80;
   const T = SUB_CROSS[0] + Math.random()*(SUB_CROSS[1] - SUB_CROSS[0]);
-  G.sub = { dir, x: dir > 0 ? -SUB_W*S/2 - 40 : G.w + SUB_W*S/2 + 40, y:0, yk:.35 + Math.random()*.1, t:0, v: span/T, prop:0, theta:0, hx:0, hy:0, slots:[] };
+  G.sub = { dir, x: dir > 0 ? -SUB_W*S/2 - 40 : G.w + SUB_W*S/2 + 40, y:0, yk:.2 + Math.random()*.25, t:0, v: span/T, prop:0, theta:0, hx:0, hy:0, slots:[] };
   placeSub(G.sub);
   const who = G.bodies.filter(c=>!c.ej);
   if(who.length){ const c = pick(who); c.say = null; gSay(c, pick(SUB_LINES), 90); c.talkCd = 150; }
@@ -1270,7 +1265,7 @@ function drawSub(k, tm){
     for(let i=0;i<=n;i++){ const t = i/n, x = Math.round((s.wx + (s.hx - s.wx)*t)/S)*S, y = Math.round((s.wy + (s.hy - s.wy)*t)/S)*S;
       k.fillStyle = "#1b1233"; k.fillRect(x - S, y, 3*S, S);
       k.fillStyle = (i>>1)%2 ? "#6b7182" : "#c3c6e6"; k.fillRect(x, y, S, S); }
-    k.drawImage(SUB.hook, Math.round((s.hx - 12.5*S)/S)*S, Math.round((s.hy - 1.5*S)/S)*S); }
+    k.drawImage(SUB.hook, Math.round((s.hx - 23.5*S)/S)*S, Math.round((s.hy - 1.5*S)/S)*S); }
   k.drawImage(SUB.frames[s.prop][side], left, top);
   // headlight cone + porthole glow (additive)
   k.save(); k.globalCompositeOperation = "lighter";
@@ -1297,7 +1292,7 @@ function gameStep(dt){
   stepPfx(dt);
   if(G.freeze > 0){ G.freeze -= dt; stepBubbles(0); return; }   // hit-stop: everything holds for a beat
   // emit: ~90 bubbles/s per held jet
-  ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
+  ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.0*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
   stepBubbles(dt);
   stepSub(dt); stepSubFx(dt);
   // bodies: 1) bubble pushes + integrate + world bounds
@@ -1324,7 +1319,7 @@ function gameStep(dt){
     }
     if(c.heat >= EJECT_AT){ ejectBody(c); return; }
     c.vy += G_GRAV*dt; c.vx *= Math.pow(G_DRAG, dt); c.vy *= Math.pow(G_DRAG, dt);
-    c.vx = Math.max(-9, Math.min(9, c.vx)); c.vy = Math.max(-10, Math.min(8, c.vy));
+    c.vx = Math.max(-6, Math.min(6, c.vx)); c.vy = Math.max(-7, Math.min(5, c.vy));
     c.x += c.vx*dt; c.y += c.vy*dt;
     c.wasAir = c.air; c.support = false; c.side = 0;
     if(c.y >= ground){

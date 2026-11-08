@@ -12,12 +12,11 @@ import * as impact from "./lib/fx/impacts/impact-frame.js";
 import * as landing from "./lib/fx/impacts/heavy-landing.js";
 import * as confetti from "./lib/fx/ui/confetti.js";
 import * as combo from "./lib/fx/ui/combo-counter.js";
-import * as jet from "./lib/fx/water/water-jet.js";
 import * as rays from "./lib/fx/weather/god-rays.js";
 import * as school from "./lib/fx/critters/fish-school.js";
 import * as catchFx from "./lib/fx/pickups/collect-burst.js";
 
-const MODS = { pow, impact, landing, confetti, combo, jet, rays, school, catch: catchFx };
+const MODS = { pow, impact, landing, confetti, combo, rays, school, catch: catchFx };
 
 // Sea-tinted palettes so borrowed effects sit in our underwater night
 export const PALETTES = {
