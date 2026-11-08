@@ -1,4 +1,5 @@
 name: Deploy to GitHub Pages
+# Site root = main. The test version at /fx/ = the pixelfx branch (when it exists).
 on:
   push:
     branches: [main]
@@ -18,11 +19,22 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: site
+      - name: Add the pixelfx test branch under /fx/
+        run: |
+          if git -C site ls-remote --exit-code --heads origin pixelfx >/dev/null 2>&1; then
+            git -C site fetch --depth 1 origin pixelfx
+            mkdir -p site/fx
+            git -C site archive FETCH_HEAD | tar -x -C site/fx
+            rm -rf site/fx/.github
+          fi
+          rm -rf site/.git
       - uses: actions/configure-pages@v5
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
