@@ -926,11 +926,9 @@ let gLaunched = 0, gEjected = 0, gRescued = 0;             // session totals for
 // ---------- "Resgate do submarino" event: sprites ----------
 // Original chunky rescue sub (side view, nose right), 64x32 art px; prop spins over 3 frames.
 const SUB_W = 64, SUB_H = 32, SUB_WINCH = [32.5, 30.5], SUB_LAMP = [61, 20], SUB_TAIL = [1, 19];   // art px (right-facing)
-const ROPE_LEN = 30*S, HOOK_SLOTS = [-20, 1, 22], RING_UP = 17*S, LATCH_R = 13*S, HANG_MAX = 3;
-const SUB_LINES = ["o submarino!","resgate!","me leva!","olha lá!"];
-const BEG_LINES = ["me leva!","aqui! aqui!","eu! eu!","me escolhe!","socorro! (feliz)"];
-const CATCH_LINES = ["peguei!","me salvaram!","uhuuu!"];
-const FALL_LINES = ["nãããão!","me segura!","escorreguei!"];
+const SUB_LINES = ["o submarino!","oba!","me leva!"];
+const CHEER_LINES = ["oba!","o submarino!","me leva!","eba!"];
+const CATCH_LINES = ["peguei!","tô na rede!","uhuuu!"];
 const SUB = (()=>{
   const H1 = "#ff9a3c", H2 = "#d0602a", H3 = "#ffd08a", SEAM = "#b04e22";
   const T1 = "#3fd8c8", T2 = "#1f8f8a", MET = "#2d2f3a", G1 = "#c3c6e6", G2 = "#6b7182";
@@ -973,30 +971,7 @@ const SUB = (()=>{
   const CW = 80, CH = 40, cone = grid(CW, CH);
   for(let x=0;x<CW;x++){ const half = 2 + x*.42, k = 1 - x/CW;
     for(let y=0;y<CH;y++){ const d = Math.abs(y + .5 - CH/2) / half; if(d < 1 && dither(x,y, Math.min(1, k*1.1)*(1 - d*d))) px(cone,x,y, x < 14 && d < .5 ? "#fff8dc" : "#ffe9a8"); } }
-  // hook bar: eyelet on top, three J hooks (ring hangs inside the J)
-  const hk = grid(48, 10);
-  ell(hk,23.5,1.5,1.6,1.6,G1); px(hk,23,1,null); px(hk,24,1,null);
-  rect(hk,1,3,45,2,G1); rect(hk,1,4,45,1,G2);
-  [1,22,43].forEach(x=>{ rect(hk,x+1,5,1,3,G1); px(hk,x+1,8,G2); px(hk,x+2,9,G2); px(hk,x+3,8,G1); px(hk,x+3,7,G1); });
-  outline(hk,P.K);
-  // lifebuoy held overhead (red/white float + two little arms), one per character colour
-  const ARM = { octo:P.o1, puffer:P.y1, horse:P.g1, jelly:P.p1, crab:P.r1, ghost:P.s1, star:P.t1, racc:P.u1 };
-  const buoy = {};
-  Object.keys(ARM).forEach(n=>{
-    const b = grid(17, 19), cx = 8.5, cy = 5.5;              // ring centre (cx, cy) sits RING_UP above the body centre
-    for(let y=0;y<11;y++) for(let x=2;x<15;x++){
-      if(!inEll(x,y,cx,cy,4.8,4.8) || inEll(x,y,cx,cy,1.9,1.9)) continue;
-      const a = Math.atan2(y + .5 - cy, x + .5 - cx), seg = Math.floor((a + Math.PI) / (Math.PI/2) + .5) % 2;
-      const lit = (x + .5 - cx) + (y + .5 - cy) < 0;
-      px(b,x,y, seg ? (lit ? "#ff6a5c" : "#c8364a") : (lit ? P.W : P.w));
-    }
-    px(b,6,3,"#ffd0c8"); px(b,7,2,P.W);
-    // little arms from behind the shoulders up to the ring's lower sides, round hands gripping it
-    [3,13].forEach(hx=>{ rect(b,hx,9,1,9,ARM[n]); rect(b,hx-(hx<8?0:1),7,2,2,ARM[n]); px(b,hx+(hx<8?1:-1),7,P.W); });
-    outline(b,P.K);
-    buoy[n] = toCanvas(b);
-  });
-  return { frames, cone:{ r:toCanvas(cone), l:toCanvas(flipG(cone)) }, hook:toCanvas(hk), buoy };
+  return { frames, cone:{ r:toCanvas(cone), l:toCanvas(flipG(cone)) } };
 })();
 // rate-limited chatter: one bubble per character, ~1 line per 3-5 s
 function gTalk(c, lines, dur){ if(c.say || (c.talkCd||0) > 0) return; gSay(c, pick(lines), dur || 70); c.talkCd = 180 + Math.random()*120; }
@@ -1138,51 +1113,73 @@ function ejectJuice(c, text){
     if(G.combo > (G.bestCombo||0)) G.bestCombo = G.combo; }
 }
 // ---------- "Resgate do submarino" event: logic ----------
-// A rescue sub crosses mid-water now and then; the crew holds up lifebuoys and the players blast them
-// up to its hook. Whoever is still hanging when it leaves the screen counts as rescued.
+// A rescue sub crosses mid-water now and then, sweeping a butterfly net forward. Players blast the crew
+// into the net's mouth; whoever is inside the bag when the sub leaves the screen counts as rescued.
 const SUB_FIRST = 12*60, SUB_EVERY = [25*60, 40*60], SUB_CROSS = [17*60, 23*60];   // frames (60 fps units)
-const HANG_SLIP = .003, HANG_KNOCK = 3, HANG_DY = 9*S;      // per-bubble fall chance, impact speed that knocks off, ring below the eyelet
+// Net frame (art px): b = distance behind the hoop plane (into the bag), v = down from the hoop centre.
+// The hoop hangs from a short arm under the winch; its mouth (b = 0, |v| <= NET_MOUTH) faces the travel direction.
+const NET_DROP = 25, NET_MOUTH = 17, NET_ARM = 4;           // hoop centre below the winch, hoop half-height, arm length above the hoop
+const NET_BAG = [[0,-17],[24,-15],[48,-10],[66,-1],[72,8],[66,17],[48,23],[24,23],[0,17]];   // convex; last edge = open mouth
+const NET_WALL_IN = 9, NET_WALL_OUT = 10, NET_DEEP = 6;     // centre clearance inside / outside the mesh, depth that counts as "caught"
+const NET_EDGES = (()=>{                                    // solid edges with inward normals (the mouth edge is left out)
+  let cb = 0, cv = 0; NET_BAG.forEach(([b,v])=>{ cb += b; cv += v; }); cb /= NET_BAG.length; cv /= NET_BAG.length;
+  const out = [];
+  for(let i=0;i<NET_BAG.length-1;i++){
+    const [ab,av] = NET_BAG[i], [bb,bv] = NET_BAG[i+1], L = Math.hypot(bb-ab, bv-av);
+    let nb = -(bv-av)/L, nv = (bb-ab)/L;
+    if((cb-ab)*nb + (cv-av)*nv < 0){ nb = -nb; nv = -nv; }
+    out.push({ ab, av, bb, bv, nb, nv, L });
+  }
+  return out;
+})();
 function subArtX(s, ax){ return s.x - SUB_W*S/2 + (s.dir > 0 ? ax : SUB_W - ax)*S; }
 function subArtY(s, ay){ return s.y - SUB_H*S/2 + ay*S; }
 function spawnSub(){
-  const dir = Math.random() < .5 ? 1 : -1, span = G.w + SUB_W*S + 80;
+  const dir = Math.random() < .5 ? 1 : -1, span = G.w + SUB_W*S + 80 + 80*S;
   const T = SUB_CROSS[0] + Math.random()*(SUB_CROSS[1] - SUB_CROSS[0]);
-  G.sub = { dir, x: dir > 0 ? -SUB_W*S/2 - 40 : G.w + SUB_W*S/2 + 40, y:0, yk:.2 + Math.random()*.25, t:0, v: span/T, prop:0, theta:0, hx:0, hy:0, slots:[] };
-  placeSub(G.sub);
+  G.sub = { dir, x: dir > 0 ? -SUB_W*S/2 - 40 : G.w + SUB_W*S/2 + 40, y:0, yk:.28 + Math.random()*.2, t:0, v: span/T, vx:0, vy:0, prop:0 };
+  placeSub(G.sub); G.sub.vx = dir*G.sub.v;
   const who = G.bodies.filter(c=>!c.ej);
   if(who.length){ const c = pick(who); c.say = null; gSay(c, pick(SUB_LINES), 90); c.talkCd = 150; }
 }
-// derived points: rope from the winch to the hook bar's eyelet, and the 3 slots where rings hang
+// derived points: winch, hoop centre (net frame origin)
 function placeSub(s){
   s.y = G.h*s.yk + (reduce ? 0 : Math.sin(s.t/55)*5);
-  s.theta = -s.dir*.12 + (reduce ? 0 : Math.sin(s.t/45)*.06);       // rope trails a little behind the sub
   s.wx = subArtX(s, SUB_WINCH[0]); s.wy = subArtY(s, SUB_WINCH[1]);
-  s.hx = s.wx + Math.sin(s.theta)*ROPE_LEN; s.hy = s.wy + Math.cos(s.theta)*ROPE_LEN;
-  s.slots = HOOK_SLOTS.map(dx=>({ x: s.hx + dx*S, y: s.hy + HANG_DY }));   // ring centres sit in the J hooks
+  s.nx = s.wx; s.ny = s.wy + NET_DROP*S;
 }
+const netLocal = (s, x, y)=>[(s.nx - x)*s.dir/S, (y - s.ny)/S];        // world -> net frame (art px)
+const netWorld = (s, b, v)=>[s.nx - s.dir*b*S, s.ny + v*S];             // net frame -> world
+function inBag(b, v, pad){ pad = pad || 0; for(const e of NET_EDGES) if((b-e.ab)*e.nb + (v-e.av)*e.nv < -pad) return false; return b >= 0; }
+function netCount(){ return G.bodies.reduce((n,c)=>n + (c.net ? 1 : 0), 0); }
 function finishSub(){
   const s = G.sub; if(!s) return;
-  const X = pfx();
-  G.bodies.filter(c=>c.hang).forEach((c,i)=>{
-    gRescued++;
-    const fx = Math.max(70, Math.min(G.w - 70, c.x)), fy = Math.max(40, Math.min(G.h*.6, c.y)) - i*22;
-    G.floats.push({ text:"+1 resgatado", x:fx, y:fy, life:120, max:120 });
+  const X = pfx(), caught = G.bodies.filter(c=>c.net && !c.ej);
+  if(caught.length){
+    gRescued += caught.length;
+    let cx = 0, cy = 0; caught.forEach(c=>{ cx += c.x; cy += c.y; }); cx /= caught.length; cy /= caught.length;
+    const fx = Math.max(80, Math.min(G.w - 80, cx)), fy = Math.max(40, Math.min(G.h*.6, cy));
+    G.floats.push({ text:"+" + caught.length + (caught.length > 1 ? " resgatados" : " resgatado"), x:fx, y:fy, life:130, max:130 });
     if(X) X.spawn("gfront", "confetti", { x:fx, y:fy + 30, flip: s.dir < 0, seed:(Math.random()*999)|0 });
-    // off with the sub: walks back in later through the ejection state machine
-    c.hang = null; c.ej = { phase:"gone", t:0, wait: 200 + Math.random()*140 };
-    c.vx = c.vy = 0; c.rot = 0; c.heat = 0; c.say = null; c.sayT = 0;
-  });
+  }
+  // off with the sub: they walk back in later through the ejection state machine
+  caught.forEach(c=>{ c.net = false; c.ej = { phase:"gone", t:0, wait: 200 + Math.random()*140 };
+    c.vx = c.vy = 0; c.rot = 0; c.heat = 0; c.say = null; c.sayT = 0; });
+  G.bodies.forEach(c=>{ c.net = false; c.netCaught = false; c.nb = undefined; });
   G.sub = null; G.subCd = SUB_EVERY[0] + Math.random()*(SUB_EVERY[1] - SUB_EVERY[0]);
 }
 function stepSub(dt){
   const s = G.sub;
   if(!s){ if((G.subCd -= dt) <= 0) spawnSub(); return; }
+  const oy = s.y, h = Math.max(dt, .01);
   s.t += dt; s.x += s.dir*s.v*dt; s.prop = reduce ? 0 : Math.floor(s.t/4) % 3;
-  placeSub(s);
+  placeSub(s); s.vx = s.dir*s.v; s.vy = (s.y - oy)/h;
   // propeller wash: little bubbles trailing behind (not physical)
   if(!reduce && Math.random() < .3*dt && G.subBub.length < 60)
     G.subBub.push({ x: subArtX(s, SUB_TAIL[0]) + (Math.random()-.5)*6, y: subArtY(s, SUB_TAIL[1]) + (Math.random()-.5)*14, vx: -s.dir*(.4 + Math.random()*.5), life: 60 + Math.random()*50, sz: Math.random() < .75 ? 0 : 1, ph: Math.random()*6 });
-  if((s.dir > 0 && s.x - SUB_W*S/2 > G.w + 30) || (s.dir < 0 && s.x + SUB_W*S/2 < -30)) finishSub();
+  // leaves once the sub and the whole bag behind it are off screen
+  const tail = s.nx - s.dir*76*S;
+  if((s.dir > 0 && Math.min(tail, s.x - SUB_W*S/2) > G.w + 20) || (s.dir < 0 && Math.max(tail, s.x + SUB_W*S/2) < -20)) finishSub();
 }
 function stepSubFx(dt){
   G.subBub = G.subBub.filter(b=>(b.life -= dt) > 0);
@@ -1190,82 +1187,126 @@ function stepSubFx(dt){
   G.floats = G.floats.filter(f=>(f.life -= dt) > 0);
   G.floats.forEach(f=>{ f.y -= .35*dt; });
 }
-function ringPoint(c){ return [c.x + Math.sin(c.rot)*RING_UP, c.y - Math.cos(c.rot)*RING_UP]; }
-function tryLatch(c){
-  const s = G.sub; if(!s || c.hang || c.ej || (c.noLatch||0) > 0) return false;
-  const used = G.bodies.filter(b=>b.hang).map(b=>b.hang.slot);
-  if(used.length >= HANG_MAX) return false;
-  const [rx, ry] = ringPoint(c);
-  let best = -1, bd = LATCH_R;
-  s.slots.forEach((p,i)=>{ if(used.indexOf(i) >= 0) return; const d = Math.hypot(rx - p.x, ry - p.y); if(d < bd){ bd = d; best = i; } });
-  if(best < 0) return false;
-  const sv = s.dir*s.v;
-  c.hang = { slot:best }; c.vx = sv + Math.max(-1.2, Math.min(1.2, (c.vx - sv)*.35)); c.vy *= .3; c.heat = 0; c.scared = 0; c.dizzy = 0;
-  const p = s.slots[best], X = pfx();
-  if(X) X.spawn("gfront", "catch", { x:p.x, y:p.y, palette:X.PALETTES.gold, seed:(Math.random()*999)|0 });
+// a free, airborne body whose centre crossed the mouth plane from the front (within the hoop) is now in the net
+function netTryEnter(c){
+  const s = G.sub; if(!s || c.net || c.ej) return;
+  const [b, v] = netLocal(s, c.x, c.y), prev = c.nb;
+  c.nb = b;
+  if(prev !== undefined && prev <= 0 && b > 0 && Math.abs(v) < NET_MOUTH && inBag(b, v)){ c.net = true; c.netCaught = false; c.support = false; }
+}
+function netCatchFx(c){
+  c.netCaught = true; c.heat = 0; c.scared = 0; c.dizzy = 0;
+  const X = pfx();
+  if(X) X.spawn("gfront", "catch", { x:c.x, y:c.y, palette:X.PALETTES.gold, seed:(Math.random()*999)|0 });
   else for(let i=0;i<6 && G.splash.length < 240;i++){ const a = i/6*Math.PI*2;
-    G.splash.push({ x:p.x, y:p.y, vx:Math.cos(a)*1.4, vy:Math.sin(a)*1.4 - .3, life:22, star:true, c: i%2 ? P.W : P.yl }); }
+    G.splash.push({ x:c.x, y:c.y, vx:Math.cos(a)*1.4, vy:Math.sin(a)*1.4 - .3, life:22, star:true, c: i%2 ? P.W : P.yl }); }
   c.say = null; c.talkCd = 0; gSay(c, pick(CATCH_LINES), 80); c.talkCd = 200;
-  return true;
 }
-function dropHang(c){
-  c.hang = null; c.noLatch = 90; c.scared = 50; c.rest = 0;
-  c.say = null; c.talkCd = 0; gSay(c, pick(FALL_LINES), 70); c.talkCd = 160;
-}
-// hanging from the hook by the ring: a pendulum around its slot, nudged by bubbles (which may knock it off)
-function stepHanging(c, dt, bit){
-  const s = G.sub; if(!s){ c.hang = null; return; }
-  const p = s.slots[c.hang.slot], ox = c.x, oy = c.y, h = Math.max(dt, .01);
-  const pvx = s.dir*s.v, damp = Math.pow(reduce ? .9 : .975, dt);
-  c.vx = pvx + (c.vx - pvx)*damp; c.vy *= damp; c.vy += G_GRAV*2*dt;     // water-damped pendulum riding along with the sub
+// inside the bag: rides along with the sub (water-damped relative motion), gravity + a gentle flow toward the back
+function stepNetted(c, dt, bit){
+  const s = G.sub; if(!s){ c.net = false; return; }
+  const damp = Math.pow(reduce ? .9 : .965, dt);
+  c.vx = s.vx + (c.vx - s.vx)*damp; c.vy = s.vy + (c.vy - s.vy)*damp;
+  c.vy += G_GRAV*dt; c.vx -= s.dir*.012*dt;
   for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
     const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
     if(dx*dx + dy*dy >= rr*rr) continue;
-    c.vx += b.vx*.04; c.vy += b.vy*.04;
-    b.hits |= bit; b.vx *= .8; b.vy *= .8;
+    c.vx += b.vx*.05; c.vy += b.vy*.05 - .05; c.rot += b.vx*.006;
+    b.hits |= bit; b.vx *= .7; b.vy *= .7;
     if(G.splash.length < 220) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*1.6, vy:-.6, life:10 });
-    b.n = (b.n||0) + 1; if(b.n >= 3) gPop(b, true);
-    if(Math.random() < HANG_SLIP){ dropHang(c); return; }
+    b.n = (b.n||0) + 1; if(b.n >= 2) gPop(b, true);       // the mesh shreds bubbles quickly
   }
   c.x += c.vx*dt; c.y += c.vy*dt;
-  let dx = c.x - p.x, dy = c.y - p.y; const d = Math.hypot(dx, dy) || .001;
-  dx /= d; dy /= d;
-  if(dy < .3){ dy = .3; dx = Math.sign(dx || 1)*Math.sqrt(1 - .09); }   // never swings above ~72deg
-  c.x = p.x + dx*RING_UP; c.y = p.y + dy*RING_UP;
-  c.vx = Math.max(-9, Math.min(9, (c.x - ox)/h)); c.vy = Math.max(-10, Math.min(8, (c.y - oy)/h));
-  c.rot = Math.atan2(-dx, dy);
+  c.rot += (c.vx - s.vx)*.01*dt; c.rot *= Math.pow(.985, dt);
+  c.support = false; c.air = false; c.heat = 0;
   c.scared = Math.max(0, (c.scared||0) - dt); c.talkCd = Math.max(0, (c.talkCd||0) - dt);
   if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
-  if(Math.random() < .002*dt) gTalk(c, ["que vista!","tchau, chão!","uhuuu!","segura firme!"], 70);
+  if(c.netCaught && Math.random() < .002*dt) gTalk(c, ["que vista!","tchau, chão!","uhuuu!","tô na rede!"], 70);
 }
-// a flying character slamming into a hanging one knocks it off the hook
-function hangKnocks(B){
-  const R2 = G_COL_R*2;
-  G.bodies.forEach(h=>{ if(!h.hang) return;
-    B.forEach(b=>{ if(!h.hang) return;
-      let dx = b.x - h.x, dy = b.y - h.y; const d = Math.hypot(dx, dy);
-      if(d >= R2 || d < .001) return;
-      const nx = dx/d, ny = dy/d;
-      b.x += nx*(R2 - d)*.8; b.y += ny*(R2 - d)*.8;
-      const vn = (b.vx - h.vx)*nx + (b.vy - h.vy)*ny; if(vn >= 0) return;
-      const imp = -(1 + G_COL_REST)*vn/2;
-      h.vx -= imp*nx; h.vy -= imp*ny; b.vx += imp*nx; b.vy += imp*ny;
-      if(-vn > HANG_KNOCK && !b.support){ collideFx(h, b, h.x + nx*G_COL_R, h.y + ny*G_COL_R, -vn); dropHang(h); }
-    });
-  });
+// mesh walls: netted bodies stay inside (the open mouth excepted); free bodies bounce off the outside of hoop and bag
+function netWalls(c){
+  const s = G.sub; if(!s || c.ej) return;
+  let [b, v] = netLocal(s, c.x, c.y);
+  const rb = -s.dir*(c.vx - s.vx), rv = c.vy - s.vy;       // velocity relative to the bag, net frame
+  let db = 0, dv = 0, nrb = rb, nrv = rv;
+  if(c.net){
+    for(const e of NET_EDGES){
+      const d = (b-e.ab)*e.nb + (v-e.av)*e.nv - NET_WALL_IN;
+      if(d >= 0) continue;
+      b -= d*e.nb; v -= d*e.nv; db -= d*e.nb; dv -= d*e.nv;
+      const vn = nrb*e.nb + nrv*e.nv; if(vn < 0){ nrb -= 1.2*vn*e.nb; nrv -= 1.2*vn*e.nv; }   // soft mesh: little bounce
+    }
+    if(b < 0){ c.net = false; c.netCaught = false; c.nb = b; }                        // pushed back out of the mouth: free again
+    else if(!c.netCaught && b > NET_DEEP) netCatchFx(c);
+  } else {
+    if(inBag(b, v)){                                      // inside without crossing the mouth (tunnelled): out through the nearest wall
+      if(c.nb !== undefined && c.nb <= 0) return;          // just came through the mouth: netTryEnter takes it
+      let best = null, bd = 1e9;
+      for(const e of NET_EDGES){ const d = (b-e.ab)*e.nb + (v-e.av)*e.nv; if(d < bd){ bd = d; best = e; } }
+      if(best){ const push = bd + NET_WALL_OUT; b -= best.nb*push; v -= best.nv*push; db -= best.nb*push; dv -= best.nv*push;
+        const vn = nrb*best.nb + nrv*best.nv; if(vn > 0){ nrb -= 1.5*vn*best.nb; nrv -= 1.5*vn*best.nv; } }
+    }
+    for(const e of NET_EDGES){
+      const t = Math.max(0, Math.min(1, ((b-e.ab)*(e.bb-e.ab) + (v-e.av)*(e.bv-e.av)) / (e.L*e.L)));
+      const qb = e.ab + (e.bb-e.ab)*t, qv = e.av + (e.bv-e.av)*t;
+      let ob = b - qb, ov = v - qv; const d = Math.hypot(ob, ov);
+      if(d >= NET_WALL_OUT || d < .001) continue;
+      ob /= d; ov /= d; const push = NET_WALL_OUT - d;
+      b += ob*push; v += ov*push; db += ob*push; dv += ov*push;
+      const vn = nrb*ob + nrv*ov; if(vn < 0){ nrb -= 1.5*vn*ob; nrv -= 1.5*vn*ov; }
+    }
+  }
+  if(db || dv){ c.x -= s.dir*db*S; c.y += dv*S; c.vx = s.vx - s.dir*nrb; c.vy = s.vy + nrv; }
+  if(!c.net) c.nb = netLocal(s, c.x, c.y)[0];
+}
+// net drawing: dark translucent bag behind the crew, light crosshatched mesh + hoop in front of it
+function netShape(s, tm){
+  const n = netCount(), bulge = Math.min(4, n*1.3);
+  const sway = b => reduce ? 0 : Math.sin(tm/520 + b/14) * b/72 * 1.6;
+  return { bulge, sway, inside:(b, v)=>{                    // visual outline: physics bag + bulge at the bottom, swaying tail
+    const vv = v - sway(b), k = Math.max(0, Math.min(1, b/40));
+    return inBag(b, vv < 0 ? vv : vv - bulge*k*(vv/23), 2); } };   // drawn 2 px roomier than the physics walls
+}
+function drawNetBack(k, tm){
+  const s = G.sub; if(!s) return;
+  const sh = netShape(s, tm), ox = Math.round(s.nx/S)*S, oy = Math.round(s.ny/S)*S;
+  k.fillStyle = "rgba(6,14,40,.28)";
+  for(let b=0;b<=76;b++) for(let v=-20;v<=30;v++) if(sh.inside(b, v)) k.fillRect(ox - s.dir*b*S - (s.dir > 0 ? 0 : S), oy + v*S, S, S);
+}
+function drawNetFront(k, tm){
+  const s = G.sub; if(!s) return;
+  const sh = netShape(s, tm), ox = Math.round(s.nx/S)*S, oy = Math.round(s.ny/S)*S, X = b => ox - s.dir*b*S - (s.dir > 0 ? 0 : S);
+  // mesh: diagonal crosshatch in the bag's own frame (so the knots travel with the sway), brighter rim
+  const mesh = [], rim = [];
+  for(let b=1;b<=76;b++) for(let v=-20;v<=30;v++){
+    if(!sh.inside(b, v)) continue;
+    const edge = !sh.inside(b+1, v) || !sh.inside(b, v-1) || !sh.inside(b, v+1) || (b > 1 && !sh.inside(b-1, v));
+    const vv = Math.round(v - sh.sway(b));
+    if(edge) rim.push([b, v]); else if((b + vv + 600) % 6 === 0 || (b - vv + 600) % 6 === 0) mesh.push([b, v]);
+  }
+  k.globalAlpha = .6; k.fillStyle = "#d8f0ff"; mesh.forEach(([b,v])=>k.fillRect(X(b), oy + v*S, S, S));
+  k.globalAlpha = .85; k.fillStyle = "#eaf6ff"; rim.forEach(([b,v])=>k.fillRect(X(b), oy + v*S, S, S));
+  k.globalAlpha = 1;
+  // arm from the winch down to the hoop's top
+  const ax = Math.round(s.wx/S)*S - S;
+  k.fillStyle = "#1b1233"; k.fillRect(ax - S, Math.round(s.wy/S)*S, 4*S, (NET_DROP - NET_MOUTH + 1)*S);
+  k.fillStyle = "#a3a9b8"; k.fillRect(ax, Math.round(s.wy/S)*S, 2*S, (NET_DROP - NET_MOUTH)*S);
+  // hoop: rigid ring seen almost edge-on (narrow ellipse), dark outline + yellow tube with a lit side
+  const ring = (rx, ry, c)=>{ k.fillStyle = c;
+    for(let v=-ry; v<=ry; v++){ const w = Math.round(rx*Math.sqrt(Math.max(0, 1 - (v/ry)*(v/ry))));
+      k.fillRect(ox - w*S - (s.dir > 0 ? 0 : 0), oy + v*S, S, S); k.fillRect(ox + w*S, oy + v*S, S, S);
+      if(Math.abs(v) >= ry - 1) k.fillRect(ox - w*S, oy + v*S, (2*w + 1)*S, S); } };
+  ring(4.5, NET_MOUTH + 1.5, "#1b1233"); ring(3.5, NET_MOUTH + 1, "#1b1233");
+  ring(3.5, NET_MOUTH, "#e0901c"); ring(2.5, NET_MOUTH, s.dir > 0 ? "#ffd447" : "#e0901c");
+  k.fillStyle = "#fff0b0"; k.fillRect(ox - S, oy - (NET_MOUTH - 3)*S, S, 2*S);
 }
 function drawSub(k, tm){
   // propeller wash behind everything else of the sub
   G.subBub.forEach(b=>{ k.globalAlpha = Math.min(1, b.life/30); k.drawImage(PROP.bub[b.sz], Math.round(b.x/S)*S, Math.round(b.y/S)*S); });
   k.globalAlpha = 1;
   const s = G.sub; if(!s) return;
+  drawNetBack(k, tm);
   const side = s.dir > 0 ? "r" : "l", left = Math.round((s.x - SUB_W*S/2)/S)*S, top = Math.round((s.y - SUB_H*S/2)/S)*S;
-  // rope/chain: alternating light/dark links, then the hook bar
-  { const n = Math.ceil(ROPE_LEN/S);
-    for(let i=0;i<=n;i++){ const t = i/n, x = Math.round((s.wx + (s.hx - s.wx)*t)/S)*S, y = Math.round((s.wy + (s.hy - s.wy)*t)/S)*S;
-      k.fillStyle = "#1b1233"; k.fillRect(x - S, y, 3*S, S);
-      k.fillStyle = (i>>1)%2 ? "#6b7182" : "#c3c6e6"; k.fillRect(x, y, S, S); }
-    k.drawImage(SUB.hook, Math.round((s.hx - 23.5*S)/S)*S, Math.round((s.hy - 1.5*S)/S)*S); }
   k.drawImage(SUB.frames[s.prop][side], left, top);
   // headlight cone + porthole glow (additive)
   k.save(); k.globalCompositeOperation = "lighter";
@@ -1300,8 +1341,7 @@ function gameStep(dt){
   G.bodies.forEach((c, ci)=>{
     if(stepEjected(c, dt, ground)) return;
     const bit = 1 << ci;
-    if(c.hang){ stepHanging(c, dt, bit); return; }          // on the sub's hook: no ejection, no collisions
-    c.noLatch = Math.max(0, (c.noLatch||0) - dt);
+    if(c.net){ stepNetted(c, dt, bit); return; }            // in the sub's net: no ejection, no floor/ceiling bounds
     c.heat = Math.max(0, (c.heat||0) - dt/30);             // -1 hit per 0.5 s when not being hit
     c.hitT = (c.hitT||0) + dt; c.talkCd = Math.max(0, (c.talkCd||0) - dt); c.landCd = Math.max(0, (c.landCd||0) - dt);
     for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
@@ -1331,10 +1371,10 @@ function gameStep(dt){
     if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; gTalk(c, PUSH_LINES, 70); }
     if(c.x < G_BODY_R){ c.x = G_BODY_R; c.vx = Math.abs(c.vx)*.6; }
     if(c.x > G.w - G_BODY_R){ c.x = G.w - G_BODY_R; c.vx = -Math.abs(c.vx)*.6; }
-    if(G.sub && c.y < ground - 6) tryLatch(c);              // ring passes the hook while airborne: latch on
+    if(G.sub && c.y < ground - 6) netTryEnter(c);           // crossed the net's mouth while airborne: into the bag
   });
   // 2) body-body collisions: equal-mass circles, positional correction + restitution impulse, a few passes for stacks
-  const B = G.bodies.filter(c=>!c.ej && !c.hang), R2 = G_COL_R*2;
+  const B = G.bodies.filter(c=>!c.ej), R2 = G_COL_R*2;     // netted bodies collide too (that's what fills the bag)
   for(let it=0; it<G_COL_ITERS; it++){
     for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++){
       const a = B[i], b = B[j];
@@ -1348,7 +1388,7 @@ function gameStep(dt){
         const aFix = a.support && ny < 0, bFix = b.support && ny > 0;
         const wa = aFix ? 0 : (bFix ? 1 : .5), wb = bFix ? 0 : (aFix ? 1 : .5);
         a.x -= nx*corr*wa; a.y -= ny*corr*wa; b.x += nx*corr*wb; b.y += ny*corr*wb;
-        if(b.y > ground){ b.y = ground; } if(a.y > ground){ a.y = ground; }
+        if(b.y > ground && !b.net){ b.y = ground; } if(a.y > ground && !a.net){ a.y = ground; }
       }
       // whoever is on top is "supported" by the one below
       if(ny > .45 && (b.support || b.y >= ground - 1)) a.support = true;
@@ -1364,12 +1404,13 @@ function gameStep(dt){
       a.vx += f*tx; a.vy += f*ty; b.vx -= f*tx; b.vy -= f*ty;
       if(it === 0 && -vn > G_COL_HIT){ collideFx(a, b, a.x + nx*G_COL_R, a.y + ny*G_COL_R, -vn); }
     }
-    B.forEach(c=>{ if(c.y > ground) c.y = ground; if(c.x < G_BODY_R) c.x = G_BODY_R; if(c.x > G.w - G_BODY_R) c.x = G.w - G_BODY_R; });
+    if(G.sub) B.forEach(netWalls);                           // bag mesh: solid from outside, container from inside
+    B.forEach(c=>{ if(c.net) return; if(c.y > ground) c.y = ground; if(c.x < G_BODY_R) c.x = G_BODY_R; if(c.x > G.w - G_BODY_R) c.x = G.w - G_BODY_R; });
   }
-  if(G.sub) hangKnocks(B);
   // 3) post: resting detection (no jitter), faces, walking, stats
   let air = 0;
   B.forEach(c=>{
+    if(c.net){ c.blinkT -= dt; if(c.blinkT < -7) c.blinkT = 90 + Math.random()*220; return; }
     if(c.support){
       // floor/pile friction + sleep tiny motion so stacks stay still
       c.vx *= .86;
@@ -1384,10 +1425,10 @@ function gameStep(dt){
       c.wander -= dt; if(c.wander < 0){ c.wander = 90 + Math.random()*200; c.dir = Math.random()<.5?1:-1; }
       if(c.side && c.side === c.dir) c.dir = -c.dir;           // bumped into a neighbour: turn around
       const onFloor = c.y >= ground - 1;
-      if(G.sub && onFloor && c.dizzy <= 0 && c.scared <= 0){        // sub overhead: face it, hop and beg to be picked up
+      if(G.sub && onFloor && c.dizzy <= 0 && c.scared <= 0){        // sub overhead: face it, happy little hops, cheering
         if(Math.abs(c.vx) < .5) c.dir = G.sub.x > c.x ? 1 : -1;
-        if(!reduce && Math.random() < .012*dt){ c.vy = -(1.3 + Math.random()*.8); c.rest = 0; }
-        if(Math.random() < .0015*dt) gTalk(c, BEG_LINES, 70);
+        if(!reduce && Math.random() < .012*dt){ c.vy = -(1.1 + Math.random()*.7); c.rest = 0; }
+        if(Math.random() < .0015*dt) gTalk(c, CHEER_LINES, 70);
       }
       if(onFloor && c.dizzy <= 0 && c.scared <= 0 && Math.abs(c.vx) < .5){ c.x += c.dir*.35*dt; c.dist += .35*dt; }
     }
@@ -1496,23 +1537,22 @@ function gameDraw(now){
     else if(c.air) fr = sp.happy;                                                                       // floating gently
     else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
     const closing = G.trans && G.trans.dir < 0;
-    const ring = !!G.sub && !c.ej && !closing;                        // sub overhead: everyone holds up a lifebuoy
-    if(ring && !(c.air && speed > 2.4 && !c.hang)) fr = c.scared > 0 ? sp.wide : sp.happy;
+    const cheer = !!G.sub && !c.ej && !closing;                       // sub overhead: the whole crew looks happy
+    if(cheer && (c.net || !(c.air && speed > 2.4))) fr = c.scared > 0 && !c.net ? sp.wide : sp.happy;
     if(closing) fr = c.landed ? sp.walk[0] : sp.happy;                 // match the aquarium's idle pose for the handoff
     const img = fr[c.dir < 0 ? "l" : "r"];
     const hovY = closing && c.landed ? -Math.round((HOVER[c.name]||0) * S * (G.trans.k||0)) : 0;
     const ground = G.floor - G_FEET, lift = Math.max(0, ground - c.y);
-    if(!(c.ej && c.ej.phase === "out") && !c.hang){ k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1; }
+    if(!(c.ej && c.ej.phase === "out") && !c.net){ k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1; }
     const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
-    let bx = c.x, by = c.y;
-    if(c.hang && G.sub){ const p = G.sub.slots[c.hang.slot]; bx = p.x - Math.sin(rot)*RING_UP; by = p.y + Math.cos(rot)*RING_UP; }   // ring stays on its hook
+    const bx = c.x, by = c.y;
     k.save(); k.translate(Math.round(bx/S)*S, Math.round(by/S)*S + hovY); if(rot) k.rotate(rot);
-    if(ring) k.drawImage(SUB.buoy[c.name] || SUB.buoy.octo, -8.5*S, -RING_UP - 5.5*S);   // arms tuck behind the body
     k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S);   // feet sit at y + 24
     k.restore();
-    heads.push([c, bx, by - (ring ? 23 : 14)*S]);
+    heads.push([c, bx, by - 14*S]);
   });
   k.restore();
+  drawNetFront(k, tm);                                              // mesh + hoop over whoever is inside the bag
   weeds.forEach(wd=>{ if(wd.front) weed(wd); });
   // bubbles + splashes
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
@@ -1664,9 +1704,13 @@ function applyBand(k){
 function relayoutGame(){
   if(!game.open || !G.cv) return;
   const ox = G.w || 1, oFloor = G.floor;
+  const keep = G.sub ? G.bodies.filter(c=>c.net).map(c=>[c, netLocal(G.sub, c.x, c.y)]) : [];   // netted ride along in net coords
   gameSize(); measureNozzles();
   G.bodies.forEach(c=>{ c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x / ox * G.w)); c.y = Math.min(c.y + (G.floor - oFloor), G.floor - G_FEET); });
-  if(G.sub){ G.sub.x = G.sub.x / ox * G.w; placeSub(G.sub); }
+  if(G.sub){ const s = G.sub;
+    s.x = s.x / ox * G.w; placeSub(s);
+    keep.forEach(([c,[b,v]])=>{ [c.x, c.y] = netWorld(s, b, v); });
+    G.bodies.forEach(c=>{ if(!c.net) c.nb = undefined; }); }
 }
 function measureNozzles(){
   const z = G.sx || G.zoom;
@@ -1736,8 +1780,8 @@ function closeGame(){
   G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
   const now = performance.now();
   G.shake = 0; if(G.cv && G.cv.style) G.cv.style.transform = ""; G.drops = [];
-  G.sub = null; G.subBub = []; G.floats = [];                  // rescue event ends: whoever hangs just falls and lands
-  G.bodies.forEach(c=>{ c.hang = null; c.noLatch = 0; });
+  G.sub = null; G.subBub = []; G.floats = [];                  // rescue event ends: whoever is in the net just falls and lands
+  G.bodies.forEach(c=>{ c.net = false; c.netCaught = false; c.nb = undefined; });
   G.bodies.forEach(c=>{ if(c.ej){ const gone = c.ej.phase !== "back"; c.ej = null; c.heat = 0;
       c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x)); if(gone){ c.y = -40; c.vx = 0; } c.rot = 0; } });
   G.bodies.forEach(c=>{ c.y0 = c.y; c.x0 = c.x; c.vx0 = Math.max(-2, Math.min(2, c.vx)); c.rot0 = c.rot; c.vx = c.vy = 0;
@@ -1749,7 +1793,7 @@ function finishClose(smooth){
   const wasHandoff = smooth === true && game.handoff;
   if(window.PFX) GAME_LAYERS.forEach(n=>window.PFX.clear(n));
   game.open = false; game.handoff = false; G.trans = null; G.opening = false;
-  G.sub = null; G.subBub = []; G.floats = []; (G.bodies||[]).forEach(c=>{ c.hang = null; });
+  G.sub = null; G.subBub = []; G.floats = []; (G.bodies||[]).forEach(c=>{ c.net = false; c.netCaught = false; c.nb = undefined; });
   if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
   try{ releaseJets(); }catch(e){}
   if(G.el){
