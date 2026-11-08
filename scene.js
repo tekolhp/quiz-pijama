@@ -662,6 +662,8 @@ function draw(now){
     if(f.kind==="star"){ drawStar(Math.round(f.x/S)*S, Math.round(f.y/S)*S, f.c); return; }
     ctx.fillStyle = f.c; ctx.fillRect(Math.round(f.x/S)*S, Math.round(f.y/S)*S, f.kind==="feather"?2*S:S*1.5, S);
   });
+  // pixelfx layer (confetti / POW on quiz answers)
+  if(window.PFX) window.PFX.render("aq", ctx, W, H);
   // speech bubbles on top
   const taken = []; heads.sort((p,q)=>q[2]-p[2]).forEach(([a,hx,hy])=>{ if(a.say) bubbleText(a.say, hx, hy, taken); });
 }
@@ -831,6 +833,9 @@ if(cv.addEventListener){
   cv.addEventListener("pointerup", ()=>{ if(game.open) enterFs(); });
 }
 
+// pixelfx (loaded as a module by pfx/bridge.js); everything below works without it
+const pfx = () => (window.PFX && window.PFX.ready && !reduce) ? window.PFX : null;
+const GAME_LAYERS = ["gsea","gback","gfront","gimpact"];
 function sceneReact(ok){
   dirty = true;
   if(ok){
@@ -838,8 +843,11 @@ function sceneReact(ok){
       life:60+Math.random()*40, c:pick(["#ffd447","#ff6a5c","#62dd94","#58b4ff","#ff92d4","#a56cf0"]), kind:"conf" });
     actors.forEach(a=>{ a.state="jump"; a.t=Math.random()*20; a.target=null; });
     makeSay(pick(actors), pick(RIGHT_JOKES), 140);
+    const X = pfx(); if(X){ X.spawn("aq","confetti",{ x:W/2, y:FLOOR + S, seed:(Math.random()*999)|0 });
+      if(W > 520){ X.spawn("aq","confetti",{ x:W*.2, y:FLOOR + S, seed:(Math.random()*999)|0 }); X.spawn("aq","confetti",{ x:W*.8, y:FLOOR + S, flip:true, seed:(Math.random()*999)|0 }); } }
   } else {
     const a = pick(actors); makeSay(a, pick(WRONG_JOKES), 160); a.state="idle"; a.t=0;
+    const X = pfx(); if(X) X.spawn("aq","pow",{ x:W/2, y:H*.46, text:pick(["XIII!","OPS!","ERROU!"]), palette:X.PALETTES.wrong, seed:(Math.random()*999)|0 });
     const b = pick(actors.filter(x=>x!==a)); b.state = Math.random()<.5 ? "sleep" : "doze"; b.t=0; b.target=null;
   }
 }
@@ -877,7 +885,7 @@ function ejectBody(c){
   const toSide = Math.random() < .45, dir = c.x < G.w/2 ? -1 : 1;
   c.vx = toSide ? dir*(6 + Math.random()*2) : (Math.random()-.5)*3; c.vy = toSide ? -6 : -11;
   c.heat = 0; c.say = null; c.talkCd = 0; gSay(c, pick(EJECT_LINES), 80); c.talkCd = 200;
-  gEjected++;
+  gEjected++; ejectJuice(c, pick(["TCHAU!","VUSH!","POW!","VOOU!"]));
   for(let i=0;i<8 && G.splash.length < 240;i++) G.splash.push({ x:c.x, y:c.y + 18, vx:(Math.random()-.5)*3, vy:Math.random()*2, life:16 });
 }
 // ejected flight / off-screen wait / walk-in along the floor; returns true while the body is out of normal play
@@ -892,6 +900,7 @@ function stepEjected(c, dt, ground){
     e.scale = 1 + (SPLAT_SCALE - 1)*q; c.rot = (e.rot0 + e.spin*e.t) * (1 - t);   // a little spin, then faces the camera
     if(t >= 1){
       e.phase = "splat"; e.t = 0; c.rot = 0; gEjected++;
+      { const X = pfx(); if(X){ X.spawn("gimpact", "impact", { fit:true, seed:(Math.random()*999)|0 }); ejectJuice(c, "PLOFT!"); G.freeze = 4; } }
       gSay(c, pick(SPLAT_LINES), 40);
       if(!reduce) G.shake = 9;
       for(let i=0;i<14;i++){ const a = Math.random()*Math.PI*2, v = 1.5 + Math.random()*3;
@@ -979,7 +988,35 @@ function stepBubbles(dt, popChance){
   if(G.shake > 0){ G.shake = Math.max(0, G.shake - dt);
     if(G.cv && G.cv.style) G.cv.style.transform = G.shake > 0 ? "translate(" + Math.round((Math.random()-.5)*6) + "px," + Math.round((Math.random()-.5)*6) + "px)" : ""; }
 }
+function stepPfx(dt){
+  const X = pfx(); if(!X) return;
+  // water jets follow the analog aim while a pad is held
+  ["l","r"].forEach(side=>{
+    if(G.held[side].size){ const n = G.noz[side], a = G.aim[side];
+      X.loop("gback", "jet-"+side, "jet", { x:n.x + Math.cos(a)*14, y:n.y + Math.sin(a)*14, angle:a, length:64, light:.7, seed: side === "l" ? 3 : 7 }); }
+    else X.stopLoop("gback", "jet-"+side);
+  });
+  // a fish school cruises across now and then
+  const sc = G.school;
+  if(sc){ sc.x += sc.dir*.35*dt;
+    X.loop("gsea", "school", "school", { x:sc.x, y:sc.y, flip: sc.dir < 0 });
+    if((sc.dir > 0 && sc.x > G.w + 90) || (sc.dir < 0 && sc.x < -90)){ X.stopLoop("gsea","school"); G.school = null; G.schoolCd = 500 + Math.random()*700; } }
+  else if((G.schoolCd = (G.schoolCd||0) - dt) <= 0){ const dir = Math.random()<.5 ? 1 : -1;
+    G.school = { dir, x: dir > 0 ? -80 : G.w + 80, y: G.h*(.18 + Math.random()*.25) }; }
+}
+// every ejection: a POW and a short hit-stop; ejections close together build a combo
+function ejectJuice(c, text){
+  const X = pfx(); if(!X) return;
+  G.freeze = 6; if(!reduce) G.shake = Math.max(G.shake, 5);
+  X.spawn("gfront", "pow", { x:Math.max(70, Math.min(G.w - 70, c.x)), y:Math.max(60, c.y), text, seed:(Math.random()*999)|0 });
+  const now = performance.now();
+  G.combo = now - (G.lastEject||0) < 2600 ? (G.combo||1) + 1 : 1; G.lastEject = now;
+  if(G.combo >= 2){ X.spawn("gfront", "combo", { x:G.w/2, y:Math.round(G.h*.24), count:G.combo, label:"COMBO", palette:X.PALETTES.combo, seed:G.combo });
+    if(G.combo > (G.bestCombo||0)) G.bestCombo = G.combo; }
+}
 function gameStep(dt){
+  stepPfx(dt);
+  if(G.freeze > 0){ G.freeze -= dt; stepBubbles(0); return; }   // hit-stop: everything holds for a beat
   // emit: ~90 bubbles/s per held jet
   ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
   stepBubbles(dt);
@@ -989,7 +1026,7 @@ function gameStep(dt){
     if(stepEjected(c, dt, ground)) return;
     const bit = 1 << ci;
     c.heat = Math.max(0, (c.heat||0) - dt/30);             // -1 hit per 0.5 s when not being hit
-    c.hitT = (c.hitT||0) + dt; c.talkCd = Math.max(0, (c.talkCd||0) - dt);
+    c.hitT = (c.hitT||0) + dt; c.talkCd = Math.max(0, (c.talkCd||0) - dt); c.landCd = Math.max(0, (c.landCd||0) - dt);
     for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
       const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
       if(dx*dx + dy*dy < rr*rr){
@@ -1010,6 +1047,8 @@ function gameStep(dt){
     c.wasAir = c.air; c.support = false; c.side = 0;
     if(c.y >= ground){
       if(c.air && c.vy > 3.2) gTalk(c, ["ai!","ui!","tum!","ai ai ai"], 60);
+      if(c.air && c.vy > 4.2 && !c.landCd && pfx() && pfx().live("gback") < 8){ c.landCd = 40;
+        pfx().spawn("gback", "landing", { x:c.x, y:G.floor + S, palette:pfx().PALETTES.sand, light:.4, seed:(Math.random()*999)|0 }); }
       c.y = ground; c.vy = c.vy > 1.2 ? -c.vy*.35 : 0; c.vx *= .85; c.support = true;
     }
     if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; gTalk(c, PUSH_LINES, 70); }
@@ -1122,11 +1161,12 @@ function gameDraw(now){
   k.fillStyle = grad; k.fillRect(0, 0, w, h);
   const top = h - BG.far.height;
   tile(BG.far, offFar, top + groundDy);                                  // ridges ride with the floor
-  k.save(); k.globalCompositeOperation = "lighter";
+  if(pfx()) pfx().render("gsea", k, w, h, 0);           // god rays + a fish school (pixelfx)
+  else { k.save(); k.globalCompositeOperation = "lighter";
   for(let i=0;i<Math.max(3,Math.round(w/170));i++){ k.globalAlpha = .08 + .05*Math.sin(tm/1400+i*2.1);
     const rx = ((i+.35)/Math.max(3,Math.round(w/170)))*w + Math.sin(tm/5200+i*1.7)*24 - 40;
     k.drawImage(PROP.ray, Math.round(rx/S)*S, 0, PROP.ray.width, h); }
-  k.restore();
+  k.restore(); }
   k.fillStyle = "rgba(190,230,255,.45)";
   for(let x=0;x<w;x+=26) k.fillRect(Math.round((x + Math.sin(tm/700 + x/40)*4)/S)*S, 2*S + (Math.round(x/26)%2)*S, 5*S, S);
   tile(BG.mid, offMid, top + groundDy);
@@ -1146,6 +1186,7 @@ function gameDraw(now){
       k.drawImage(segs[q%2], wd.x + offFg + ox*S, gFloor + 2*S - (q+1)*5*S); } };
   weeds.forEach(wd=>{ if(!wd.front) weed(wd); });
   if(groundDy < 0){ k.fillStyle = "#b8924e"; k.fillRect(0, h + groundDy, w, -groundDy); }   // sand below the rising floor
+  if(window.PFX) window.PFX.render("gback", k, w, h, groundDy);   // vent bubbles, water jets, landing dust
   // nozzles
   if(!(G.trans && G.trans.dir < 0)) ["l","r"].forEach(side=>{
     const n = G.noz[side], on = G.held[side].size > 0, a = G.aim[side];
@@ -1186,7 +1227,9 @@ function gameDraw(now){
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
   G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
     if(f.star) drawStar(x, y, f.c, k); else { k.fillStyle = "#bfe8ff"; k.fillRect(x, y, S, S); } });
+  if(window.PFX) window.PFX.render("gfront", k, w, h, 0);         // POW on ejections, combo counter
   heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
+  if(window.PFX) window.PFX.render("gimpact", k, w, h, 0);        // anime impact frame behind the splat
   drawGlassLayer(k, tm);
   // HUD lives in the DOM (crisp pixel font); touch it only when a number changes
   const txt = gLaunched + "|" + gEjected;
@@ -1366,6 +1409,10 @@ function openGame(){
     el.style.display = ""; el.hidden = false; el.classList.remove("ready");
     gameSize(); gameReset(); measureNozzles();
     G.aim.l = AIM_DEFAULT.l; G.aim.r = AIM_DEFAULT.r;
+    { const X = pfx(); G.freeze = 0; G.combo = 0; G.school = null; G.schoolCd = 120;
+      if(X){ GAME_LAYERS.forEach(n=>X.clear(n));
+        X.loop("gsea", "rays", "rays", { fit:true, palette:X.PALETTES.seaLight, light:.55, seed:3 });
+        X.loop("gback", "vent", "vent", { x:Math.round(G.w*.7), y:G.floor + 2*S, light:.6, seed:4 }); } }
     // crew starts exactly where it stands in the aquarium
     const aq = aquariumGeom(), z = G.sx || G.zoom;
     if(aq.ok) G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (aq.left + (a.x + lastOffFg + SPR_W*S/2) * aq.width / W) / z; c.dir = a.dir; });
@@ -1390,6 +1437,7 @@ function releaseJets(){
 function closeGame(){
   if(!game.open || (G.trans && G.trans.dir < 0)) return;
   releaseJets();                                           // input frozen from here on (pads ignore taps while G.trans is set)
+  if(window.PFX){ window.PFX.stopLoop("gback","jet-l"); window.PFX.stopLoop("gback","jet-r"); window.PFX.stopLoop("gsea","school"); }
   G.el.classList.remove("ready");                          // HUD fades out
   G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
   const now = performance.now();
@@ -1403,6 +1451,7 @@ function closeGame(){
 }
 function finishClose(smooth){
   const wasHandoff = smooth === true && game.handoff;
+  if(window.PFX) GAME_LAYERS.forEach(n=>window.PFX.clear(n));
   game.open = false; game.handoff = false; G.trans = null; G.opening = false;
   if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
   try{ releaseJets(); }catch(e){}
