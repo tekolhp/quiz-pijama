@@ -397,26 +397,76 @@ const BG = {};
   for(let y=36;y<=64;y++) for(let x=236;x<=288;x++){ if(!inEll(x,y,262,64,25,28)) continue; const ang=Math.atan2(y-68,x-262); const rib=Math.floor((ang+Math.PI)/(Math.PI/10))%2; px(m,x,y, x>270 ? (rib?"#cf8667":"#b06a52") : (rib?"#f7b994":"#cf8667")); }
   poly(m,[[244,64],[244,57],[252,60],[252,64]],"#cf8667"); poly(m,[[280,64],[280,57],[272,60],[272,64]],"#b06a52");
   door(262,55,8); win(262,45,3.5);
-  // 6) sunken submarine
-  rect(m,357,22,2,13,"#4a6f62"); rect(m,357,21,6,3,"#4a6f62"); px(m,362,22,P.W);
-  rect(m,338,34,20,11,"#6f9c8a"); rect(m,354,34,4,11,"#4a6f62"); ell(m,348,34,10,2,"#6f9c8a");
-  blob(m,352,54,44,11.5,"#6f9c8a","#4a6f62",P.W,64);
-  ell(m,328,58,3,2,"#b36a3f"); ell(m,374,47,2,1.5,"#b36a3f"); ell(m,388,57,2,2,"#b36a3f");
-  poly(m,[[308,50],[300,44],[302,52],[300,60],[308,56]],"#4a6f62");
-  for(let x=316;x<392;x+=8) px(m,x,47,"#2f4a42");
-  [[326,53],[340,53],[354,53],[368,53],[382,53]].forEach(([x,y],i)=>{ if(i===3){ ell(m,x,y,3.3,3.3,"#c9b27a"); ell(m,x,y,2.4,2.4,"#1b2a4a"); } else win(x,y,2.6); });
+  // 6) half-buried treasure chest with a big rusty anchor leaning on it
+  const CX0 = 320, CX1 = 362, CTOP = 48;                     // chest body: x span and top row (bottom sinks into the sand)
+  const IRON = "#565c74", IRON2 = "#3a3e52", RIV = "#a3a9b8", GOLD = "#ffd447", GOLD2 = "#e0901c";
+  // body: horizontal planks, darker right end, two iron bands with rivets, corner caps
+  for(let y=CTOP;y<=64;y++) for(let x=CX0;x<=CX1;x++){
+    const seam = (y - CTOP) % 5 === 4, right = x >= CX1 - 4;
+    px(m,x,y, seam ? WOOD2 : right ? "#6e4226" : (y === CTOP ? "#a8683a" : WOOD));
+  }
+  [[CX0+7,0],[CX1-9,1]].forEach(([bx])=>{ rect(m,bx,CTOP,3,17,IRON); rect(m,bx+2,CTOP,1,17,IRON2); for(let y=CTOP+2;y<64;y+=4) px(m,bx+1,y,RIV); });
+  rect(m,CX0,CTOP,3,4,IRON); rect(m,CX1-2,CTOP,3,4,IRON2);
+  // lock plate (front, under the lid gap)
+  rect(m,339,CTOP+1,5,6,GOLD2); rect(m,340,CTOP+1,3,5,GOLD); px(m,341,CTOP+3,P.K); px(m,341,CTOP+4,P.K);
+  // lid: drawn in its own frame and rotated a few degrees around the left hinge, so it sits crooked and ajar
+  const LID_A = -0.075, HX = CX0, HY = CTOP - 2.5, LW = CX1 - CX0 + 1;
+  const lidAt = (lx, ly)=>{
+    if(lx < 0 || lx > LW) return null;
+    const u = (lx - LW/2) / (LW/2), topY = -(3 + 7*Math.sqrt(Math.max(0, 1 - u*u)));
+    if(ly > 0 || ly < topY) return null;
+    const band = (lx >= 7 && lx < 10) || (lx >= LW - 9 && lx < LW - 6);
+    if(band) return ly < topY + 1.5 ? "#7d84a0" : IRON;
+    if(ly > -1.2) return WOOD2;                               // front rim
+    if(ly < topY + 1.4) return lx < LW*.6 ? "#c07a46" : "#8a5530";   // lit crown
+    return ((Math.floor(ly - topY) % 3) === 2) ? WOOD2 : (lx > LW - 5 ? "#6e4226" : "#9a5f34");
+  };
+  const ca = Math.cos(LID_A), sa = Math.sin(LID_A);
+  for(let y=CTOP-16;y<CTOP;y++) for(let x=CX0-2;x<=CX1+3;x++){
+    const dx = x + .5 - HX, dy = y + .5 - HY, lx = dx*ca + dy*sa, ly = -dx*sa + dy*ca;   // inverse rotation
+    const c = lidAt(lx, ly); if(c) px(m,x,y,c);
+  }
+  // treasure peeking out of the gap (re-lit after the depth tint, see below)
+  const gap = [];
+  for(let x=CX0+1;x<CX1;x++) for(let y=CTOP-1;y>=CTOP-7 && !get(m,x,y);y--) gap.push([x,y]);
+  // coins spilled on the sand + a red gem
+  [[306,63],[311,62],[314,63],[367,63],[372,62],[300,63]].forEach(([x,y],i)=>{ ell(m,x,y,2,1.2,GOLD); px(m,x+1,y,GOLD2); if(i%2===0) px(m,x-1,y-1,P.y3); });
+  rect(m,309,60,4,2,GOLD); rect(m,309,61,4,1,GOLD2);           // a little coin stack
+  px(m,318,62,"#ff5a6e"); px(m,319,62,"#c8364a"); px(m,318,61,"#ffb0c0");
+  // sand mound swallowing the chest's base
+  for(let x=309;x<=373;x++) for(let y=58;y<=64;y++) if(inEll(x,y,341,67.5,32,7)) px(m,x,y, inEll(x,y,341,68.5,32,7) ? (dither(x,y,.5)?"#d9b46c":"#e6c47e") : "#f4dc9c");
+  // anchor: authored upright (crown at origin, shank up), leaned 30deg onto the lid's corner
+  const AN_A = -0.52, AX = 378, AY = 63, cA = Math.cos(AN_A), sA = Math.sin(AN_A);
+  const at = (lx, ly)=>[AX + lx*cA - ly*sA, AY + lx*sA + ly*cA];
+  const RUST = "#a0583a", RUST2 = "#6e3a28", RUST3 = "#c87a3c", MOSS = "#4e8a6a";
+  const stamp = (lx, ly, r, c)=>{ const [x,y] = at(lx, ly); ell(m, x, y, r, r, c); };
+  for(let l=0;l<=34;l+=.5){ stamp(.6,-l,1.5,RUST2); stamp(-.4,-l,1.1,RUST); }            // shank
+  for(let t=-1;t<=1;t+=.03){ const a = t*1.25, lx = Math.sin(a)*11, ly = -11 + Math.cos(a)*11;   // arms (U-curve)
+    stamp(lx, ly - .4, 1.6, RUST2); stamp(lx, ly - 1, 1, RUST); }
+  [-1,1].forEach(sd=>{ const [x0,y0] = at(sd*11.2,-11.5), [x1,y1] = at(sd*14.5,-6), [x2,y2] = at(sd*8,-7);   // flukes
+    poly(m,[[x0,y0],[x1,y1],[x2,y2]],RUST); });
+  for(let s=-7;s<=7;s+=.5){ stamp(s,-30,1.5,RUST2); stamp(s,-30.6,1,RUST); }              // stock (crossbar)
+  stamp(-7.8,-30.2,1.9,RUST2); stamp(7.8,-30.2,1.9,RUST2);
+  for(let k=0;k<28;k++){ const a = k/28*Math.PI*2, [x,y] = at(Math.cos(a)*3.4, -38.5 + Math.sin(a)*3.4); px(m,x,y, Math.sin(a) < 0 ? RUST : RUST2); }   // ring
+  [[0,-8],[0,-19],[-.5,-26],[5,-30],[-9,-8],[9,-4]].forEach(([lx,ly])=>{ const [x,y] = at(lx,ly); px(m,x,y,RUST3); });
+  [[0,-13],[1,-14],[-10,-6]].forEach(([lx,ly])=>{ const [x,y] = at(lx,ly); px(m,x,y,MOSS); px(m,x+1,y,MOSS); });
+  { const [x,y] = at(-10,-7); for(let i=-4;i<=4;i++) for(let j=0;j<=3;j++) if(inEll(x+i,y+j,x,y+3.5,5,3)) px(m,x+i,y+j, j===0 ? "#f4dc9c" : "#e6c47e"); }   // left fluke dug in
+  const ANCHOR_RING = at(0,-42).map(Math.round);               // top of the ring: bunting tie point
   // depth tint: push everything a bit toward the water colour
   recolor(m,c=> c.startsWith("#") ? mix(c,"#0b2350",.22) : undefined);
   windows.forEach(([x,y,r])=>{ ell(m,x,y,r+1,r+1,"#c9b27a"); ell(m,x,y,r,r,LIT); px(m,x-1,y-1,P.W); });
+  // the chest's gap glows: gold pile with glints, a few light motes spilling out above the lid
+  gap.forEach(([x,y])=>{ const deep = y >= CTOP - 2; px(m,x,y, deep ? ((x*7+y*3)%5===0 ? P.W : (x%3===0 ? GOLD2 : GOLD)) : "#fff0b0"); });
   ell(m,88,16,3,3,P.yl); px(m,87,15,P.W); px(m,88,16,P.W);
   outline(m,INK);
-  // bunting between teapot knob, shell top and periscope
+  [[326,41],[333,38],[347,39],[355,37],[351,33]].forEach(([x,y])=>{ if(!get(m,x,y)) px(m,x,y,"#ffe58a"); });   // light motes over the chest
+  // bunting between teapot knob, shell top and the anchor's ring
   const string=(x0,y0,x1,y1,sag,ci)=>{ const n=Math.ceil(Math.abs(x1-x0)); for(let i=0;i<=n;i++){ const t=i/n, x=x0+(x1-x0)*t, y=y0+(y1-y0)*t+sag*Math.sin(Math.PI*t); px(m,x,y,"#c9c3e6");
       if(i%7===3){ const c=[P.pk,P.yl,P.b1,P.g1,P.o1][(ci+i/7|0)%5]; rect(m,x-1,y+1,3,1,c); rect(m,x-1,y+2,2,1,c); px(m,x,y+3,c); } } };
-  string(172,30,262,35,10,0); string(262,35,358,20,9,2);
+  string(172,30,262,35,10,0); string(262,35,ANCHOR_RING[0],ANCHOR_RING[1],4,2);
   BG.mid=toCanvas(m); BG.midW=MW;
-  BG.glows=[[88,16,0],[38,44,1],[50,39,2],[157,50,3],[187,50,4],[262,45,5],[326,53,6],[340,53,7],[354,53,8],[382,53,9]];
-  BG.spouts=[[207,35],[360,20]];
+  BG.glows=[[88,16,0],[38,44,1],[50,39,2],[157,50,3],[187,50,4],[262,45,5],[341,44,6,1],[328,45,7],[354,44,8]];   // [x, y, phase, big]
+  BG.spouts=[[207,35],[350,43],[333,44]];                     // teapot spout, chest lid gap
 
   // FORE: sand with pebbles and little shells
   const SW=128, s=grid(SW,AH), r=rng(7);
@@ -619,8 +669,8 @@ function draw(now){
   const mw = BG.mid.width;
   ctx.save(); ctx.globalCompositeOperation = "lighter";
   for(let base = ((offMid%mw)+mw)%mw - mw; base < W; base += mw){
-    BG.glows.forEach(([gx,gy,ph])=>{ const img = ph===0 ? PROP.glow : PROP.glowS, half = (img.width/S>>1)*S;
-      ctx.globalAlpha = ph===0 ? .3+.2*Math.sin(tm/600) : .2+.06*Math.sin(tm/900+ph);
+    BG.glows.forEach(([gx,gy,ph,big])=>{ const img = ph===0||big ? PROP.glow : PROP.glowS, half = (img.width/S>>1)*S;
+      ctx.globalAlpha = ph===0 ? .3+.2*Math.sin(tm/600) : big ? .2+.08*Math.sin(tm/1100) : .2+.06*Math.sin(tm/900+ph);
       ctx.drawImage(img, base + gx*S - half, gy*S - half); });
   }
   ctx.restore();
@@ -676,7 +726,7 @@ function update(dt, now){
   if((gagCool -= dt) <= 0){ startGag(); gagCool = 520 + Math.random()*620; }
   // bubbles
   bubbles.forEach(b=>{ b.y -= b.v*dt; if(b.y < -10){ Object.assign(b, newBubble(Math.random()*W, FLOOR)); } });
-  if(Math.random() < .015*dt){ // steam from teapot spout / periscope
+  if(Math.random() < .015*dt){ // steam from the teapot spout / bubbles escaping the chest's lid
     const [sx,sy] = pick(BG.spouts), mw = BG.mid.width, off = Math.round(Math.sin(now/6500)*3)*S - 40;
     for(let base = ((off%mw)+mw)%mw - mw; base < W; base += mw) if(bubbles.length < 60) bubbles.push(Object.assign(newBubble(base+sx*S, sy*S), { s:0, v:.4 }));
   }
@@ -861,6 +911,7 @@ const G = {
   aim:{ l:-50*Math.PI/180, r:-130*Math.PI/180 },          // jet angles (radians, screen coords: -90deg = straight up)
   noz:{ l:{x:30,y:0}, r:{x:0,y:0} },                       // nozzle positions in world units
   trans:null, aq:null,                                     // open/close transition state, aquarium rect at open
+  sub:null, subCd:0, subBub:[], floats:[],                 // rescue sub event
 };
 const AIM_MIN = -165*Math.PI/180, AIM_MAX = -15*Math.PI/180, AIM_DEFAULT = { l:-50*Math.PI/180, r:-130*Math.PI/180 };
 const G_FEET = 22, G_MAX_BUB = 400, G_GRAV = .055, G_DRAG = .992, G_BODY_R = 19;
@@ -870,7 +921,83 @@ const PUSH_LINES = ["ei!","para com isso!","tá molhando!","uiii!","socorro!","k
 const EJECT_LINES = ["tchauuu!","me tira daqui!","lá vou eu!"];
 const RETURN_LINES = ["voltei!","que voo!","de novo não…"];
 const EJECT_AT = 120;                                      // bubble hits needed to launch a character
-let gLaunched = 0, gEjected = 0;                           // session totals for the HUD
+let gLaunched = 0, gEjected = 0, gRescued = 0;             // session totals for the HUD
+
+// ---------- "Resgate do submarino" event: sprites ----------
+// Original chunky rescue sub (side view, nose right), 64x32 art px; prop spins over 3 frames.
+const SUB_W = 64, SUB_H = 32, SUB_WINCH = [32.5, 30.5], SUB_LAMP = [61, 20], SUB_TAIL = [1, 19];   // art px (right-facing)
+const ROPE_LEN = 30*S, HOOK_SLOTS = [-9, 1, 11], RING_UP = 17*S, LATCH_R = 10*S, HANG_MAX = 3;
+const SUB_LINES = ["o submarino!","resgate!","me leva!","olha lá!"];
+const BEG_LINES = ["me leva!","aqui! aqui!","eu! eu!","me escolhe!","socorro! (feliz)"];
+const CATCH_LINES = ["peguei!","me salvaram!","uhuuu!"];
+const FALL_LINES = ["nãããão!","me segura!","escorreguei!"];
+const SUB = (()=>{
+  const H1 = "#ff9a3c", H2 = "#d0602a", H3 = "#ffd08a", SEAM = "#b04e22";
+  const T1 = "#3fd8c8", T2 = "#1f8f8a", MET = "#2d2f3a", G1 = "#c3c6e6", G2 = "#6b7182";
+  const build = f=>{
+    const g = grid(SUB_W, SUB_H);
+    // tail fins (behind the hull)
+    poly(g,[[13,14],[4,7],[9,7],[17,13]],T2); poly(g,[[13,24],[4,30],[9,30],[17,25]],T2);
+    poly(g,[[13,14],[5,8],[8,8],[16,13]],T1);
+    // prop shaft + hub
+    rect(g,4,18,6,3,MET); rect(g,2,17,3,5,G2); px(g,2,17,G1);
+    // propeller: 3 frames (long blades, swept, edge-on)
+    if(f===0){ rect(g,0,10,2,7,G1); rect(g,0,22,2,7,G2); px(g,1,10,P.W); }
+    else if(f===1){ rect(g,1,13,2,4,G1); rect(g,0,22,2,4,G2); px(g,0,12,G1); px(g,1,26,G2); }
+    else { rect(g,0,15,2,2,G2); rect(g,0,22,2,2,G1); px(g,1,14,G2); px(g,1,24,G1); }
+    // hull: chunky rounded capsule, 2-tone orange
+    blob(g,34,19,25.5,9.5,H1,H2,H3);
+    // teal belly band with a white pinstripe
+    recolor(g,(c,x,y)=> (c===H1||c===H2) && y>=24 ? (x>48 || y>=27 ? T2 : T1) : (y===23 && (c===H1||c===H2) ? (x>50 ? G1 : P.W) : undefined));
+    // panel seams + rivets
+    recolor(g,(c,x,y)=> (x===19||x===49) && (c===H1||c===H2) ? SEAM : undefined);
+    for(let y=12;y<=22;y+=2){ if(get(g,21,y)===H1||get(g,21,y)===H2) px(g,21,y,H3); if(get(g,47,y)===H1||get(g,47,y)===H2) px(g,47,y,H3); }
+    for(let x=23;x<=45;x+=3) if(get(g,x,12)) px(g,x,12,H3);
+    // nose cap + headlamp
+    recolor(g,(c,x,y)=> x>=56 && (c===H1||c===H2||c===H3) ? (y<19 ? T1 : T2) : undefined);
+    ell(g,SUB_LAMP[0]-.5,SUB_LAMP[1],2.4,2.6,G1); ell(g,SUB_LAMP[0]-.2,SUB_LAMP[1],1.5,1.8,"#fff6c8"); px(g,SUB_LAMP[0]-1,SUB_LAMP[1]-1,P.W);
+    // conning tower with a tiny porthole, teal cap and a periscope
+    rect(g,24,7,15,6,H1); rect(g,36,7,3,6,H2); blob(g,31.5,7.5,7.5,3,H1,H2,H3);
+    rect(g,24,5,15,1,T1); recolor(g,(c,x,y)=> y<=5 && (c===H1||c===H2||c===H3) ? T1 : undefined);
+    ell(g,30.5,9,1.6,1.6,G1); px(g,30,9,"#ffe58a"); px(g,31,9,"#ffe58a");
+    rect(g,35,1,2,4,G2); rect(g,35,1,1,4,G1); rect(g,35,0,5,2,G2); rect(g,35,0,4,1,G1); px(g,39,1,"#7fe8ff");
+    // three big portholes (glow drawn additively at runtime)
+    [24,33.5,43].forEach(cx=>{ ell(g,cx,18.5,3.4,3.4,G1); ell(g,cx+.3,18.8,2.6,2.6,G2); ell(g,cx,18.5,2.2,2.2,"#ffe58a"); px(g,Math.round(cx-1),17,P.W); px(g,Math.round(cx),17,"#fff6c8"); });
+    // winch under the belly: drum with a hazard stripe
+    rect(g,29,28,8,3,MET); rect(g,30,28,6,2,G2); px(g,31,28,P.yl); px(g,33,28,P.yl); px(g,35,28,P.yl);
+    outline(g,P.K);
+    return { r:toCanvas(g), l:toCanvas(flipG(g)) };
+  };
+  const frames = [0,1,2].map(build);
+  // headlight cone: dithered wedge, brighter near the lamp
+  const CW = 80, CH = 40, cone = grid(CW, CH);
+  for(let x=0;x<CW;x++){ const half = 2 + x*.42, k = 1 - x/CW;
+    for(let y=0;y<CH;y++){ const d = Math.abs(y + .5 - CH/2) / half; if(d < 1 && dither(x,y, Math.min(1, k*1.1)*(1 - d*d))) px(cone,x,y, x < 14 && d < .5 ? "#fff8dc" : "#ffe9a8"); } }
+  // hook bar: eyelet on top, three J hooks (ring hangs inside the J)
+  const hk = grid(26, 10);
+  ell(hk,12.5,1.5,1.6,1.6,G1); px(hk,12,1,null); px(hk,13,1,null);
+  rect(hk,1,3,24,2,G1); rect(hk,1,4,24,1,G2);
+  [1,11,21].forEach(x=>{ rect(hk,x+1,5,1,3,G1); px(hk,x+1,8,G2); px(hk,x+2,9,G2); px(hk,x+3,8,G1); px(hk,x+3,7,G1); });
+  outline(hk,P.K);
+  // lifebuoy held overhead (red/white float + two little arms), one per character colour
+  const ARM = { octo:P.o1, puffer:P.y1, horse:P.g1, jelly:P.p1, crab:P.r1, ghost:P.s1, star:P.t1, racc:P.u1 };
+  const buoy = {};
+  Object.keys(ARM).forEach(n=>{
+    const b = grid(17, 19), cx = 8.5, cy = 5.5;              // ring centre (cx, cy) sits RING_UP above the body centre
+    for(let y=0;y<11;y++) for(let x=2;x<15;x++){
+      if(!inEll(x,y,cx,cy,4.8,4.8) || inEll(x,y,cx,cy,1.9,1.9)) continue;
+      const a = Math.atan2(y + .5 - cy, x + .5 - cx), seg = Math.floor((a + Math.PI) / (Math.PI/2) + .5) % 2;
+      const lit = (x + .5 - cx) + (y + .5 - cy) < 0;
+      px(b,x,y, seg ? (lit ? "#ff6a5c" : "#c8364a") : (lit ? P.W : P.w));
+    }
+    px(b,6,3,"#ffd0c8"); px(b,7,2,P.W);
+    // little arms from behind the shoulders up to the ring's lower sides, round hands gripping it
+    [3,13].forEach(hx=>{ rect(b,hx,9,1,9,ARM[n]); rect(b,hx-(hx<8?0:1),7,2,2,ARM[n]); px(b,hx+(hx<8?1:-1),7,P.W); });
+    outline(b,P.K);
+    buoy[n] = toCanvas(b);
+  });
+  return { frames, cone:{ r:toCanvas(cone), l:toCanvas(flipG(cone)) }, hook:toCanvas(hk), buoy };
+})();
 // rate-limited chatter: one bubble per character, ~1 line per 3-5 s
 function gTalk(c, lines, dur){ if(c.say || (c.talkCd||0) > 0) return; gSay(c, pick(lines), dur || 70); c.talkCd = 180 + Math.random()*120; }
 const SPLAT_GROW = 21, SPLAT_SQUASH = 5, SPLAT_SLIDE = 72, SPLAT_SCALE = 4.5;   // frames (~350 ms, ~80 ms, ~1.2 s)
@@ -959,6 +1086,7 @@ function gameSize(){
 function gameReset(){
   G.bodies = actors.map((a,i)=>({ name:a.name, x:(i+.5)*(G.w/actors.length), y:G.floor - G_FEET, vx:0, vy:0,
     rot:0, dir:a.dir, air:false, dist:0, peak:0, dizzy:0, say:null, sayT:0, blinkT:60+Math.random()*200, wander:Math.random()*200 }));
+  G.sub = null; G.subCd = SUB_FIRST; G.subBub = []; G.floats = [];
   G.pool.forEach(b=>b.on=false); G.live = 0; G.splash = []; G.drops = []; G.shake = 0; if(G.cv && G.cv.style) G.cv.style.transform = ""; G.best = 0; G.airborne = 0;
   G.held.l.clear(); G.held.r.clear();
 }
@@ -1014,17 +1142,171 @@ function ejectJuice(c, text){
   if(G.combo >= 2){ X.spawn("gfront", "combo", { x:G.w/2, y:Math.round(G.h*.24), count:G.combo, label:"COMBO", palette:X.PALETTES.combo, seed:G.combo });
     if(G.combo > (G.bestCombo||0)) G.bestCombo = G.combo; }
 }
+// ---------- "Resgate do submarino" event: logic ----------
+// A rescue sub crosses mid-water now and then; the crew holds up lifebuoys and the players blast them
+// up to its hook. Whoever is still hanging when it leaves the screen counts as rescued.
+const SUB_FIRST = 12*60, SUB_EVERY = [25*60, 40*60], SUB_CROSS = [10*60, 14*60];   // frames (60 fps units)
+const HANG_SLIP = .003, HANG_KNOCK = 3, HANG_DY = 9*S;      // per-bubble fall chance, impact speed that knocks off, ring below the eyelet
+function subArtX(s, ax){ return s.x - SUB_W*S/2 + (s.dir > 0 ? ax : SUB_W - ax)*S; }
+function subArtY(s, ay){ return s.y - SUB_H*S/2 + ay*S; }
+function spawnSub(){
+  const dir = Math.random() < .5 ? 1 : -1, span = G.w + SUB_W*S + 80;
+  const T = SUB_CROSS[0] + Math.random()*(SUB_CROSS[1] - SUB_CROSS[0]);
+  G.sub = { dir, x: dir > 0 ? -SUB_W*S/2 - 40 : G.w + SUB_W*S/2 + 40, y:0, yk:.35 + Math.random()*.1, t:0, v: span/T, prop:0, theta:0, hx:0, hy:0, slots:[] };
+  placeSub(G.sub);
+  const who = G.bodies.filter(c=>!c.ej);
+  if(who.length){ const c = pick(who); c.say = null; gSay(c, pick(SUB_LINES), 90); c.talkCd = 150; }
+}
+// derived points: rope from the winch to the hook bar's eyelet, and the 3 slots where rings hang
+function placeSub(s){
+  s.y = G.h*s.yk + (reduce ? 0 : Math.sin(s.t/55)*5);
+  s.theta = -s.dir*.12 + (reduce ? 0 : Math.sin(s.t/45)*.06);       // rope trails a little behind the sub
+  s.wx = subArtX(s, SUB_WINCH[0]); s.wy = subArtY(s, SUB_WINCH[1]);
+  s.hx = s.wx + Math.sin(s.theta)*ROPE_LEN; s.hy = s.wy + Math.cos(s.theta)*ROPE_LEN;
+  s.slots = HOOK_SLOTS.map(dx=>({ x: s.hx + dx*S, y: s.hy + HANG_DY }));   // ring centres sit in the J hooks
+}
+function finishSub(){
+  const s = G.sub; if(!s) return;
+  const X = pfx();
+  G.bodies.filter(c=>c.hang).forEach((c,i)=>{
+    gRescued++;
+    const fx = Math.max(70, Math.min(G.w - 70, c.x)), fy = Math.max(40, Math.min(G.h*.6, c.y)) - i*22;
+    G.floats.push({ text:"+1 resgatado", x:fx, y:fy, life:120, max:120 });
+    if(X) X.spawn("gfront", "confetti", { x:fx, y:fy + 30, flip: s.dir < 0, seed:(Math.random()*999)|0 });
+    // off with the sub: walks back in later through the ejection state machine
+    c.hang = null; c.ej = { phase:"gone", t:0, wait: 200 + Math.random()*140 };
+    c.vx = c.vy = 0; c.rot = 0; c.heat = 0; c.say = null; c.sayT = 0;
+  });
+  G.sub = null; G.subCd = SUB_EVERY[0] + Math.random()*(SUB_EVERY[1] - SUB_EVERY[0]);
+}
+function stepSub(dt){
+  const s = G.sub;
+  if(!s){ if((G.subCd -= dt) <= 0) spawnSub(); return; }
+  s.t += dt; s.x += s.dir*s.v*dt; s.prop = reduce ? 0 : Math.floor(s.t/4) % 3;
+  placeSub(s);
+  // propeller wash: little bubbles trailing behind (not physical)
+  if(!reduce && Math.random() < .3*dt && G.subBub.length < 60)
+    G.subBub.push({ x: subArtX(s, SUB_TAIL[0]) + (Math.random()-.5)*6, y: subArtY(s, SUB_TAIL[1]) + (Math.random()-.5)*14, vx: -s.dir*(.4 + Math.random()*.5), life: 60 + Math.random()*50, sz: Math.random() < .75 ? 0 : 1, ph: Math.random()*6 });
+  if((s.dir > 0 && s.x - SUB_W*S/2 > G.w + 30) || (s.dir < 0 && s.x + SUB_W*S/2 < -30)) finishSub();
+}
+function stepSubFx(dt){
+  G.subBub = G.subBub.filter(b=>(b.life -= dt) > 0);
+  G.subBub.forEach(b=>{ b.vx *= Math.pow(.97, dt); b.x += (b.vx + Math.sin(b.ph += .12*dt)*.15)*dt; b.y -= .45*dt; });
+  G.floats = G.floats.filter(f=>(f.life -= dt) > 0);
+  G.floats.forEach(f=>{ f.y -= .35*dt; });
+}
+function ringPoint(c){ return [c.x + Math.sin(c.rot)*RING_UP, c.y - Math.cos(c.rot)*RING_UP]; }
+function tryLatch(c){
+  const s = G.sub; if(!s || c.hang || c.ej || (c.noLatch||0) > 0) return false;
+  const used = G.bodies.filter(b=>b.hang).map(b=>b.hang.slot);
+  if(used.length >= HANG_MAX) return false;
+  const [rx, ry] = ringPoint(c);
+  let best = -1, bd = LATCH_R;
+  s.slots.forEach((p,i)=>{ if(used.indexOf(i) >= 0) return; const d = Math.hypot(rx - p.x, ry - p.y); if(d < bd){ bd = d; best = i; } });
+  if(best < 0) return false;
+  const sv = s.dir*s.v;
+  c.hang = { slot:best }; c.vx = sv + Math.max(-1.2, Math.min(1.2, (c.vx - sv)*.35)); c.vy *= .3; c.heat = 0; c.scared = 0; c.dizzy = 0;
+  const p = s.slots[best], X = pfx();
+  if(X) X.spawn("gfront", "catch", { x:p.x, y:p.y, palette:X.PALETTES.gold, seed:(Math.random()*999)|0 });
+  else for(let i=0;i<6 && G.splash.length < 240;i++){ const a = i/6*Math.PI*2;
+    G.splash.push({ x:p.x, y:p.y, vx:Math.cos(a)*1.4, vy:Math.sin(a)*1.4 - .3, life:22, star:true, c: i%2 ? P.W : P.yl }); }
+  c.say = null; c.talkCd = 0; gSay(c, pick(CATCH_LINES), 80); c.talkCd = 200;
+  return true;
+}
+function dropHang(c){
+  c.hang = null; c.noLatch = 90; c.scared = 50; c.rest = 0;
+  c.say = null; c.talkCd = 0; gSay(c, pick(FALL_LINES), 70); c.talkCd = 160;
+}
+// hanging from the hook by the ring: a pendulum around its slot, nudged by bubbles (which may knock it off)
+function stepHanging(c, dt, bit){
+  const s = G.sub; if(!s){ c.hang = null; return; }
+  const p = s.slots[c.hang.slot], ox = c.x, oy = c.y, h = Math.max(dt, .01);
+  const pvx = s.dir*s.v, damp = Math.pow(reduce ? .9 : .975, dt);
+  c.vx = pvx + (c.vx - pvx)*damp; c.vy *= damp; c.vy += G_GRAV*2*dt;     // water-damped pendulum riding along with the sub
+  for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
+    const dx = b.x - c.x, dy = b.y - c.y, rr = G_BODY_R + b.r;
+    if(dx*dx + dy*dy >= rr*rr) continue;
+    c.vx += b.vx*.04; c.vy += b.vy*.04;
+    b.hits |= bit; b.vx *= .8; b.vy *= .8;
+    if(G.splash.length < 220) G.splash.push({ x:b.x, y:b.y, vx:(Math.random()-.5)*1.6, vy:-.6, life:10 });
+    b.n = (b.n||0) + 1; if(b.n >= 3) gPop(b, true);
+    if(Math.random() < HANG_SLIP){ dropHang(c); return; }
+  }
+  c.x += c.vx*dt; c.y += c.vy*dt;
+  let dx = c.x - p.x, dy = c.y - p.y; const d = Math.hypot(dx, dy) || .001;
+  dx /= d; dy /= d;
+  if(dy < .3){ dy = .3; dx = Math.sign(dx || 1)*Math.sqrt(1 - .09); }   // never swings above ~72deg
+  c.x = p.x + dx*RING_UP; c.y = p.y + dy*RING_UP;
+  c.vx = Math.max(-9, Math.min(9, (c.x - ox)/h)); c.vy = Math.max(-10, Math.min(8, (c.y - oy)/h));
+  c.rot = Math.atan2(-dx, dy);
+  c.scared = Math.max(0, (c.scared||0) - dt); c.talkCd = Math.max(0, (c.talkCd||0) - dt);
+  if(c.sayT > 0){ c.sayT -= dt; if(c.sayT <= 0) c.say = null; }
+  if(Math.random() < .002*dt) gTalk(c, ["que vista!","tchau, chão!","uhuuu!","segura firme!"], 70);
+}
+// a flying character slamming into a hanging one knocks it off the hook
+function hangKnocks(B){
+  const R2 = G_COL_R*2;
+  G.bodies.forEach(h=>{ if(!h.hang) return;
+    B.forEach(b=>{ if(!h.hang) return;
+      let dx = b.x - h.x, dy = b.y - h.y; const d = Math.hypot(dx, dy);
+      if(d >= R2 || d < .001) return;
+      const nx = dx/d, ny = dy/d;
+      b.x += nx*(R2 - d)*.8; b.y += ny*(R2 - d)*.8;
+      const vn = (b.vx - h.vx)*nx + (b.vy - h.vy)*ny; if(vn >= 0) return;
+      const imp = -(1 + G_COL_REST)*vn/2;
+      h.vx -= imp*nx; h.vy -= imp*ny; b.vx += imp*nx; b.vy += imp*ny;
+      if(-vn > HANG_KNOCK && !b.support){ collideFx(h, b, h.x + nx*G_COL_R, h.y + ny*G_COL_R, -vn); dropHang(h); }
+    });
+  });
+}
+function drawSub(k, tm){
+  // propeller wash behind everything else of the sub
+  G.subBub.forEach(b=>{ k.globalAlpha = Math.min(1, b.life/30); k.drawImage(PROP.bub[b.sz], Math.round(b.x/S)*S, Math.round(b.y/S)*S); });
+  k.globalAlpha = 1;
+  const s = G.sub; if(!s) return;
+  const side = s.dir > 0 ? "r" : "l", left = Math.round((s.x - SUB_W*S/2)/S)*S, top = Math.round((s.y - SUB_H*S/2)/S)*S;
+  // rope/chain: alternating light/dark links, then the hook bar
+  { const n = Math.ceil(ROPE_LEN/S);
+    for(let i=0;i<=n;i++){ const t = i/n, x = Math.round((s.wx + (s.hx - s.wx)*t)/S)*S, y = Math.round((s.wy + (s.hy - s.wy)*t)/S)*S;
+      k.fillStyle = "#1b1233"; k.fillRect(x - S, y, 3*S, S);
+      k.fillStyle = (i>>1)%2 ? "#6b7182" : "#c3c6e6"; k.fillRect(x, y, S, S); }
+    k.drawImage(SUB.hook, Math.round((s.hx - 12.5*S)/S)*S, Math.round((s.hy - 1.5*S)/S)*S); }
+  k.drawImage(SUB.frames[s.prop][side], left, top);
+  // headlight cone + porthole glow (additive)
+  k.save(); k.globalCompositeOperation = "lighter";
+  const lampX = left + (s.dir > 0 ? SUB_LAMP[0] : SUB_W - SUB_LAMP[0])*S, lampY = top + SUB_LAMP[1]*S, cone = SUB.cone[side];
+  k.globalAlpha = .3 + (reduce ? 0 : .05*Math.sin(tm/300));
+  k.drawImage(cone, s.dir > 0 ? lampX : lampX - cone.width, lampY - cone.height/2);
+  k.globalAlpha = .22 + (reduce ? 0 : .05*Math.sin(tm/700));
+  [24,33.5,43].forEach(ax=>{ const img = PROP.glowS, half = (img.width/S>>1)*S;
+    k.drawImage(img, left + Math.round(s.dir > 0 ? ax : SUB_W - ax)*S - half, top + 18*S - half); });
+  k.restore(); k.globalAlpha = 1;
+}
+function drawFloats(k){
+  G.floats.forEach(f=>{
+    k.globalAlpha = Math.min(1, f.life/30);
+    k.font = "bold 15px 'Pixelify Sans', monospace"; k.textBaseline = "middle";
+    const w = k.measureText(f.text).width, x = Math.round((f.x - w/2)/S)*S, y = Math.round(f.y/S)*S;
+    k.fillStyle = "#1b1233"; [[-2,0],[2,0],[0,-2],[0,2],[2,2]].forEach(([ox,oy])=>k.fillText(f.text, x + ox, y + oy));
+    k.fillStyle = "#ffe066"; k.fillText(f.text, x, y);
+  });
+  k.globalAlpha = 1; k.textBaseline = "alphabetic";
+}
+
 function gameStep(dt){
   stepPfx(dt);
   if(G.freeze > 0){ G.freeze -= dt; stepBubbles(0); return; }   // hit-stop: everything holds for a beat
   // emit: ~90 bubbles/s per held jet
   ["l","r"].forEach(side=>{ if(G.held[side].size){ G.emitAcc[side] += 1.5*dt; while(G.emitAcc[side] >= 1){ G.emitAcc[side]--; gEmit(side); } } else G.emitAcc[side] = 0; });
   stepBubbles(dt);
+  stepSub(dt); stepSubFx(dt);
   // bodies: 1) bubble pushes + integrate + world bounds
   const ground = G.floor - G_FEET, ceil = G_BODY_R + 4;
   G.bodies.forEach((c, ci)=>{
     if(stepEjected(c, dt, ground)) return;
     const bit = 1 << ci;
+    if(c.hang){ stepHanging(c, dt, bit); return; }          // on the sub's hook: no ejection, no collisions
+    c.noLatch = Math.max(0, (c.noLatch||0) - dt);
     c.heat = Math.max(0, (c.heat||0) - dt/30);             // -1 hit per 0.5 s when not being hit
     c.hitT = (c.hitT||0) + dt; c.talkCd = Math.max(0, (c.talkCd||0) - dt); c.landCd = Math.max(0, (c.landCd||0) - dt);
     for(const b of G.pool){ if(!b.on || (b.hits & bit)) continue;
@@ -1054,9 +1336,10 @@ function gameStep(dt){
     if(c.y < ceil){ c.y = ceil; c.vy = Math.abs(c.vy)*.5; gTalk(c, PUSH_LINES, 70); }
     if(c.x < G_BODY_R){ c.x = G_BODY_R; c.vx = Math.abs(c.vx)*.6; }
     if(c.x > G.w - G_BODY_R){ c.x = G.w - G_BODY_R; c.vx = -Math.abs(c.vx)*.6; }
+    if(G.sub && c.y < ground - 6) tryLatch(c);              // ring passes the hook while airborne: latch on
   });
   // 2) body-body collisions: equal-mass circles, positional correction + restitution impulse, a few passes for stacks
-  const B = G.bodies.filter(c=>!c.ej), R2 = G_COL_R*2;
+  const B = G.bodies.filter(c=>!c.ej && !c.hang), R2 = G_COL_R*2;
   for(let it=0; it<G_COL_ITERS; it++){
     for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++){
       const a = B[i], b = B[j];
@@ -1088,6 +1371,7 @@ function gameStep(dt){
     }
     B.forEach(c=>{ if(c.y > ground) c.y = ground; if(c.x < G_BODY_R) c.x = G_BODY_R; if(c.x > G.w - G_BODY_R) c.x = G.w - G_BODY_R; });
   }
+  if(G.sub) hangKnocks(B);
   // 3) post: resting detection (no jitter), faces, walking, stats
   let air = 0;
   B.forEach(c=>{
@@ -1105,6 +1389,11 @@ function gameStep(dt){
       c.wander -= dt; if(c.wander < 0){ c.wander = 90 + Math.random()*200; c.dir = Math.random()<.5?1:-1; }
       if(c.side && c.side === c.dir) c.dir = -c.dir;           // bumped into a neighbour: turn around
       const onFloor = c.y >= ground - 1;
+      if(G.sub && onFloor && c.dizzy <= 0 && c.scared <= 0){        // sub overhead: face it, hop and beg to be picked up
+        if(Math.abs(c.vx) < .5) c.dir = G.sub.x > c.x ? 1 : -1;
+        if(!reduce && Math.random() < .012*dt){ c.vy = -(1.3 + Math.random()*.8); c.rest = 0; }
+        if(Math.random() < .0015*dt) gTalk(c, BEG_LINES, 70);
+      }
       if(onFloor && c.dizzy <= 0 && c.scared <= 0 && Math.abs(c.vx) < .5){ c.x += c.dir*.35*dt; c.dist += .35*dt; }
     }
     if(Math.abs(c.vx) > .2) c.dir = c.vx > 0 ? 1 : -1;
@@ -1173,9 +1462,9 @@ function gameDraw(now){
   // window/lantern glows, same as the aquarium
   k.save(); k.globalCompositeOperation = "lighter";
   { const mw = BG.mid.width;
-    for(let base = ((offMid%mw)+mw)%mw - mw; base < w; base += mw) BG.glows.forEach(([gx,gy,ph])=>{
-      const img = ph===0 ? PROP.glow : PROP.glowS, half = (img.width/S>>1)*S;
-      k.globalAlpha = ph===0 ? .3+.2*Math.sin(tm/600) : .2+.06*Math.sin(tm/900+ph);
+    for(let base = ((offMid%mw)+mw)%mw - mw; base < w; base += mw) BG.glows.forEach(([gx,gy,ph,big])=>{
+      const img = ph===0||big ? PROP.glow : PROP.glowS, half = (img.width/S>>1)*S;
+      k.globalAlpha = ph===0 ? .3+.2*Math.sin(tm/600) : big ? .2+.08*Math.sin(tm/1100) : .2+.06*Math.sin(tm/900+ph);
       k.drawImage(img, base + gx*S - half, top + groundDy + gy*S - half); }); }
   k.restore();
   tile(BG.fore, offFg, top + groundDy);
@@ -1197,6 +1486,7 @@ function gameDraw(now){
     k.fillStyle = "#f7f5ff"; k.fillRect(-5, -16, 2, 18);
     if(on){ k.fillStyle = "#bfe8ff"; k.fillRect(-2, -24, 4, 4); k.fillRect(-1, -30, 2, 2); }
     k.restore(); });
+  drawSub(k, tm);                                                   // rescue sub event (mid-water, behind the crew)
   // crew
   const taken = [], heads = [];
   k.save(); k.translate(0, groundDy);
@@ -1211,15 +1501,21 @@ function gameDraw(now){
     else if(c.air) fr = sp.happy;                                                                       // floating gently
     else { const st = Math.floor(c.dist/7)%4; fr = sp.walk[[0,1,0,2][st]]; if(c.blinkT < 0) fr = sp.blink; }
     const closing = G.trans && G.trans.dir < 0;
+    const ring = !!G.sub && !c.ej && !closing;                        // sub overhead: everyone holds up a lifebuoy
+    if(ring && !(c.air && speed > 2.4 && !c.hang)) fr = c.scared > 0 ? sp.wide : sp.happy;
     if(closing) fr = c.landed ? sp.walk[0] : sp.happy;                 // match the aquarium's idle pose for the handoff
     const img = fr[c.dir < 0 ? "l" : "r"];
     const hovY = closing && c.landed ? -Math.round((HOVER[c.name]||0) * S * (G.trans.k||0)) : 0;
     const ground = G.floor - G_FEET, lift = Math.max(0, ground - c.y);
-    if(!(c.ej && c.ej.phase === "out")){ k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1; }
+    if(!(c.ej && c.ej.phase === "out") && !c.hang){ k.globalAlpha = Math.max(.15, 1 - lift/160); k.drawImage(PROP.shadow, Math.round(c.x - 16), G.floor + S); k.globalAlpha = 1; }
     const rot = Math.round(c.rot / (Math.PI/8)) * (Math.PI/8);       // snap to 22.5 deg so pixels stay chunky
-    k.save(); k.translate(Math.round(c.x/S)*S, Math.round(c.y/S)*S + hovY); if(rot) k.rotate(rot);
-    k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S); k.restore();   // feet sit at y + 24
-    heads.push([c, c.x, c.y - 14*S]);
+    let bx = c.x, by = c.y;
+    if(c.hang && G.sub){ const p = G.sub.slots[c.hang.slot]; bx = p.x - Math.sin(rot)*RING_UP; by = p.y + Math.cos(rot)*RING_UP; }   // ring stays on its hook
+    k.save(); k.translate(Math.round(bx/S)*S, Math.round(by/S)*S + hovY); if(rot) k.rotate(rot);
+    if(ring) k.drawImage(SUB.buoy[c.name] || SUB.buoy.octo, -8.5*S, -RING_UP - 5.5*S);   // arms tuck behind the body
+    k.drawImage(img, -img.width/2, -img.height/2 + (SPR_W - 1 - fr.b)*S);   // feet sit at y + 24
+    k.restore();
+    heads.push([c, bx, by - (ring ? 23 : 14)*S]);
   });
   k.restore();
   weeds.forEach(wd=>{ if(wd.front) weed(wd); });
@@ -1227,14 +1523,16 @@ function gameDraw(now){
   for(const b of G.pool){ if(b.on) k.drawImage(PROP.bub[b.s], Math.round((b.x - b.r)/S)*S, Math.round((b.y - b.r)/S)*S); }
   G.splash.forEach(f=>{ const x = Math.round(f.x/S)*S, y = Math.round(f.y/S)*S + (f.star ? groundDy : 0);
     if(f.star) drawStar(x, y, f.c, k); else { k.fillStyle = "#bfe8ff"; k.fillRect(x, y, S, S); } });
-  if(window.PFX) window.PFX.render("gfront", k, w, h, 0);         // POW on ejections, combo counter
+  if(window.PFX) window.PFX.render("gfront", k, w, h, 0);         // POW on ejections, combo counter, catch sparkle
+  drawFloats(k);                                                    // "+1 resgatado"
   heads.sort((p,q)=>q[2]-p[2]).forEach(([c,x,y])=>{ if(c.say) bubbleText(c.say, x, y + groundDy, taken, k, w); });
   if(window.PFX) window.PFX.render("gimpact", k, w, h, 0);        // anime impact frame behind the splat
   drawGlassLayer(k, tm);
   // HUD lives in the DOM (crisp pixel font); touch it only when a number changes
-  const txt = gLaunched + "|" + gEjected;
+  const txt = gLaunched + "|" + gEjected + "|" + gRescued;
   if(txt !== G.hudTxt){ G.hudTxt = txt;
-    if(G.hudB) G.hudB.textContent = String(gLaunched); if(G.hudE) G.hudE.textContent = String(gEjected); }
+    if(G.hudB) G.hudB.textContent = String(gLaunched); if(G.hudE) G.hudE.textContent = String(gEjected);
+    if(G.hudR) G.hudR.textContent = String(gRescued); }
 }
 function gameLoop(now){
   if(!game.open){ G.raf = 0; return; }
@@ -1373,6 +1671,7 @@ function relayoutGame(){
   const ox = G.w || 1, oFloor = G.floor;
   gameSize(); measureNozzles();
   G.bodies.forEach(c=>{ c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x / ox * G.w)); c.y = Math.min(c.y + (G.floor - oFloor), G.floor - G_FEET); });
+  if(G.sub){ G.sub.x = G.sub.x / ox * G.w; placeSub(G.sub); }
 }
 function measureNozzles(){
   const z = G.sx || G.zoom;
@@ -1402,7 +1701,7 @@ function openGame(){
   G.opening = true;
   try{
     G.el = el; G.cv = el.querySelector("canvas"); G.ctx = G.cv.getContext("2d"); G.hud = el.querySelector(".bg-hud");
-    G.hudB = el.querySelector(".bg-n-bub"); G.hudE = el.querySelector(".bg-n-ej"); G.hudTxt = "";
+    G.hudB = el.querySelector(".bg-n-bub"); G.hudE = el.querySelector(".bg-n-ej"); G.hudR = el.querySelector(".bg-n-res"); G.hudTxt = "";
     game.open = true;
     hold.id = null; hold.shown = 0; hold.p = 0;
     document.documentElement.classList.add("bg-lock");
@@ -1442,6 +1741,8 @@ function closeGame(){
   G.el.style.background = "#b8924e";                       // anything revealed under the strip reads as deep sand
   const now = performance.now();
   G.shake = 0; if(G.cv && G.cv.style) G.cv.style.transform = ""; G.drops = [];
+  G.sub = null; G.subBub = []; G.floats = [];                  // rescue event ends: whoever hangs just falls and lands
+  G.bodies.forEach(c=>{ c.hang = null; c.noLatch = 0; });
   G.bodies.forEach(c=>{ if(c.ej){ const gone = c.ej.phase !== "back"; c.ej = null; c.heat = 0;
       c.x = Math.max(G_BODY_R, Math.min(G.w - G_BODY_R, c.x)); if(gone){ c.y = -40; c.vx = 0; } c.rot = 0; } });
   G.bodies.forEach(c=>{ c.y0 = c.y; c.x0 = c.x; c.vx0 = Math.max(-2, Math.min(2, c.vx)); c.rot0 = c.rot; c.vx = c.vy = 0;
@@ -1453,6 +1754,7 @@ function finishClose(smooth){
   const wasHandoff = smooth === true && game.handoff;
   if(window.PFX) GAME_LAYERS.forEach(n=>window.PFX.clear(n));
   game.open = false; game.handoff = false; G.trans = null; G.opening = false;
+  G.sub = null; G.subBub = []; G.floats = []; (G.bodies||[]).forEach(c=>{ c.hang = null; });
   if(G.raf) cancelAnimationFrame(G.raf); G.raf = 0;
   try{ releaseJets(); }catch(e){}
   if(G.el){

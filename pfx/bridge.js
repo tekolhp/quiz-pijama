@@ -15,14 +15,16 @@ import * as combo from "./lib/fx/ui/combo-counter.js";
 import * as jet from "./lib/fx/water/water-jet.js";
 import * as rays from "./lib/fx/weather/god-rays.js";
 import * as school from "./lib/fx/critters/fish-school.js";
+import * as catchFx from "./lib/fx/pickups/collect-burst.js";
 
-const MODS = { pow, impact, landing, confetti, combo, jet, rays, school };
+const MODS = { pow, impact, landing, confetti, combo, jet, rays, school, catch: catchFx };
 
 // Sea-tinted palettes so borrowed effects sit in our underwater night
 export const PALETTES = {
   seaLight: ["#06142a", "#0d2a52", "#1d4f92", "#3d7cc4", "#7fb6e8", "#cfe8ff", "#ffffff"],
   sand: ["#2a1e12", "#4e3a22", "#7a5c36", "#a8844e", "#d4b47a", "#f0dcae", "#fff6e0"],
   wrong: ["#140a1e", "#3a0f2a", "#7a1a2e", "#c8364a", "#ff6a5c", "#ffb0a0", "#ffffff"],
+  gold: ["#1a1206", "#4a3210", "#8a6420", "#c89a34", "#f2c84a", "#ffe58a", "#fff6c8", "#ffffff"],
   combo: ["#0a1430", "#14285a", "#1d4f92", "#2f7fd0", "#4fb3ff", "#9fdcff", "#e0f6ff", "#ffffff"],
 };
 
