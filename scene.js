@@ -1186,7 +1186,7 @@ function gameDraw(now){
       k.drawImage(segs[q%2], wd.x + offFg + ox*S, gFloor + 2*S - (q+1)*5*S); } };
   weeds.forEach(wd=>{ if(!wd.front) weed(wd); });
   if(groundDy < 0){ k.fillStyle = "#b8924e"; k.fillRect(0, h + groundDy, w, -groundDy); }   // sand below the rising floor
-  if(window.PFX) window.PFX.render("gback", k, w, h, groundDy);   // vent bubbles, water jets, landing dust
+  if(window.PFX) window.PFX.render("gback", k, w, h, groundDy);   // water jets, landing dust
   // nozzles
   if(!(G.trans && G.trans.dir < 0)) ["l","r"].forEach(side=>{
     const n = G.noz[side], on = G.held[side].size > 0, a = G.aim[side];
@@ -1412,7 +1412,7 @@ function openGame(){
     { const X = pfx(); G.freeze = 0; G.combo = 0; G.school = null; G.schoolCd = 120;
       if(X){ GAME_LAYERS.forEach(n=>X.clear(n));
         X.loop("gsea", "rays", "rays", { fit:true, palette:X.PALETTES.seaLight, light:.55, seed:3 });
-        X.loop("gback", "vent", "vent", { x:Math.round(G.w*.7), y:G.floor + 2*S, light:.6, seed:4 }); } }
+      } }
     // crew starts exactly where it stands in the aquarium
     const aq = aquariumGeom(), z = G.sx || G.zoom;
     if(aq.ok) G.bodies.forEach((c,i)=>{ const a = actors[i]; c.x = (aq.left + (a.x + lastOffFg + SPR_W*S/2) * aq.width / W) / z; c.dir = a.dir; });

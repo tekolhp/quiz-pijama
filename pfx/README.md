@@ -4,4 +4,4 @@
 and `lib/NOTICE.md`). Only the effects the quiz uses are copied. `bridge.js` exposes them to `scene.js` as `window.PFX`.
 
 Effects used: explosions/cartoon-pow, impacts/impact-frame, impacts/heavy-landing, ui/confetti, ui/combo-counter,
-water/water-jet, water/bubbles, weather/god-rays, critters/fish-school.
+water/water-jet, weather/god-rays, critters/fish-school.
