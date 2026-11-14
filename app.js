@@ -154,11 +154,11 @@ syncCustom();
 
 // ======================= HOST =======================
 // Answers are kept secret during the game (host.log[idx].answers) and only revealed, question by question, at the end.
-const host = { code:null, teams:{}, themes:[], count:15, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, log:[], ridx:0, timer:null, left:0, phase:"lobby" };
+const host = { code:null, teams:{}, themes:[], count:3, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, log:[], ridx:0, timer:null, left:0, phase:"lobby" };
 const playing = () => Object.entries(host.teams).filter(([,t])=>t.ok);
 
 const HOST_KEY="quiz.host";
-function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, levels:host.levels, deck:host.deck, idx:host.idx, answers:host.answers, log:host.log, ridx:host.ridx, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
+function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, levels:host.levels, deck:host.deck, gameId:host.gameId, rounds:host.rounds, idx:host.idx, answers:host.answers, log:host.log, ridx:host.ridx, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
 function clearHost(){ store(HOST_KEY, undefined); }
 const savedHost = load(HOST_KEY);
 if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
@@ -167,7 +167,7 @@ if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
 $("#btnResume").addEventListener("click", ()=>startHost(savedHost));
 $("#btnHost").addEventListener("click", ()=>startHost(null));
 async function startHost(saved){
-  if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, log:saved.log||[], ridx:saved.ridx||0, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
+  if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:(saved.count && saved.count<=8) ? saved.count : 3, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], gameId:saved.gameId||0, rounds:saved.rounds||0, idx:saved.idx||0, answers:saved.answers||{}, log:saved.log||[], ridx:saved.ridx||0, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
   else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
   try{ await openHost(host.code, {
@@ -193,10 +193,10 @@ async function startHost(saved){
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
   $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
-  renderThemes(); renderTeamList(); renderCustom();
+  renderThemes(); renderTeamList(); renderCustom(); renderHistory();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
-  renderLevels();
+  renderLevels(); renderRoundsInfo();
   if(saved && host.deck.length && host.phase!=="lobby"){
     if(host.phase==="end") hostEnd();
     else if(host.phase==="reveal") showReveal(host.ridx);
@@ -224,12 +224,15 @@ function renderThemes(){
   Object.keys(BANK).forEach((t,i)=>{
     const lab = el("label","theme");
     const cb = el("input"); cb.type="checkbox"; cb.id="theme-"+i; cb.value=t; cb.checked = host.themes.includes(t);
-    cb.addEventListener("change", ()=>{ host.themes = [...box.querySelectorAll("input:checked")].map(x=>x.value); saveHost(); });
+    cb.addEventListener("change", ()=>{ host.themes = [...box.querySelectorAll("input:checked")].map(x=>x.value); saveHost(); renderRoundsInfo(); });
     lab.append(cb, document.createTextNode(t)); box.append(lab);
   });
 }
-$("#mixAll").addEventListener("click", ()=>{ const all=Object.keys(BANK); host.themes = host.themes.length===all.length ? [] : all.slice(); renderThemes(); });
-$("#count").addEventListener("click", e=>{ const b=e.target.closest("button[data-n]"); if(!b) return; host.count=+b.dataset.n; saveHost(); $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); });
+$("#mixAll").addEventListener("click", ()=>{ const all=Object.keys(BANK); host.themes = host.themes.length===all.length ? [] : all.slice(); renderThemes(); renderRoundsInfo(); });
+// host.count = number of rounds; every round asks one question from each selected theme
+$("#count").addEventListener("click", e=>{ const b=e.target.closest("button[data-n]"); if(!b) return; host.count=+b.dataset.n; saveHost(); $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderRoundsInfo(); });
+function renderRoundsInfo(){ const n=host.themes.length, r=host.count;
+  $("#roundsInfo").textContent = n ? `${r} rodada${r>1?"s":""} × ${n} tema${n>1?"s":""} = ${r*n} perguntas. Cada rodada tem uma pergunta de cada tema.` : "Cada rodada tem uma pergunta de cada tema marcado."; }
 $("#level").addEventListener("click", e=>{
   const b=e.target.closest("button[data-l]"); if(!b) return;
   const l=b.dataset.l;
@@ -249,11 +252,13 @@ $("#btnStart").addEventListener("click", ()=>{
   if(!host.themes.length) return msg("#lobbyMsg","Escolhe pelo menos um tema (ou mistura tudo).");
   if(!playing().length) return msg("#lobbyMsg","Confirma pelo menos uma equipe.");
   msg("#lobbyMsg","");
-  const pool=[], seen=new Set();
-  host.themes.forEach(t=>(BANK[t]||[]).forEach(q=>{ const l=qLevel(q); const k=norm(q[0]); if(seen.has(k)) return; seen.add(k); if(l===0 || host.levels.includes(l)) pool.push({theme:t,q}); }));
-  shuffle(pool);
-  if(!pool.length) return msg("#lobbyMsg","Nenhuma pergunta com essa combinação de temas e dificuldade.");
-  host.deck=[]; while(host.deck.length<host.count) host.deck.push(...pool); host.deck=host.deck.slice(0,host.count);
+  // one shuffled pool per theme; each round takes one question from every theme (in a fresh random order)
+  const seen=new Set(), pools={};
+  host.themes.forEach(t=>{ pools[t]=shuffle((BANK[t]||[]).filter(q=>{ const l=qLevel(q), k=norm(q[0]); if(seen.has(k) || !(l===0 || host.levels.includes(l))) return false; seen.add(k); return true; })); });
+  host.deck=[];
+  for(let r=0;r<host.count;r++) shuffle(host.themes.slice()).forEach(t=>{ const q=pools[t].pop(); if(q) host.deck.push({ theme:t, q, round:r+1 }); });
+  if(!host.deck.length) return msg("#lobbyMsg","Nenhuma pergunta com essa combinação de temas e dificuldade.");
+  host.gameId = Date.now(); host.rounds = host.count;
   Object.values(host.teams).forEach(t=>t.score=0);
   host.log=[]; host.ridx=0; host.idx=0; show("hostGame"); loadQuestion();
 });
@@ -261,19 +266,20 @@ $("#btnStart").addEventListener("click", ()=>{
 function loadQuestion(){
   host.answers={}; host.phase="ready"; stopTimer(); host.left=host.secs;
   loadQuestionView();
-  send("ready", { idx:host.idx, total:host.deck.length });
+  send("ready", { idx:host.idx, total:host.deck.length, label:roundLabel(host.idx) });
   saveHost();
 }
 function loadQuestionView(){
   const item=host.deck[host.idx]; const [text,correct]=item.q; item.correct=correct;
-  $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · só você vê. Dá play quando quiser.`;
+  $("#hqNum").textContent = `${roundLabel(host.idx)} · só você vê. Dá play quando quiser.`;
   $("#hqTheme").textContent=item.theme + (["","  ·  fácil","  ·  médio","  ·  difícil"][qLevel(item.q)]||""); $("#hqText").textContent=text;
   $("#hCorrect").textContent = correct; $("#hCorrectRow").hidden = true; $("#btnPeek").textContent = "Ver resposta (só pra mim)";
   $("#hClock").textContent=host.secs+"s"; $("#hClock").classList.remove("warn"); $("#htbar").style.width="100%"; $("#htbar").classList.remove("warn");
   setPlayButton("play"); $("#hClock").classList.remove("paused"); $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
   renderHostAnswers();
 }
-function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, theme:it.theme, text:it.q[0], secs:host.secs, left:Math.max(0,Math.ceil((host.endsAt-Date.now())/1000)), teams:host.teams }; }
+function roundLabel(i){ const it=host.deck[i]; return it && it.round ? `Rodada ${it.round} de ${host.rounds||host.count} · pergunta ${i+1} de ${host.deck.length}` : `Pergunta ${i+1} de ${host.deck.length}`; }
+function questionPayload(){ const it=host.deck[host.idx]; return { idx:host.idx, total:host.deck.length, label:roundLabel(host.idx), theme:it.theme, text:it.q[0], secs:host.secs, left:Math.max(0,Math.ceil((host.endsAt-Date.now())/1000)), teams:host.teams }; }
 const norm = t => String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
 function lev(a,b){ const m=a.length,n=b.length; if(!m) return n; if(!n) return m; let prev=Array.from({length:n+1},(_,j)=>j); for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; }
 function close(a,c){ if(a===c) return true; const tol = c.length<=4 ? 0 : c.length<=7 ? 1 : 2; return lev(a,c)<=tol; }
@@ -291,7 +297,7 @@ function autoOk(answer, correct, alts){
   return false;
 }
 function sendCurrentState(){
-  if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length });
+  if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length, label:roundLabel(host.idx) });
   else if(host.phase==="question") send("question", questionPayload());
   else if(host.phase==="paused") send("pause",{ idx:host.idx, left:host.left });
   else if(host.phase==="closed") send("closed", { idx:host.idx, total:host.deck.length, answers:host.answers });
@@ -307,7 +313,7 @@ function setPlayButton(mode){ // "play" | "running" | "paused"
 $("#btnPlay").addEventListener("click", ()=>{
   if(host.phase==="ready"){
     host.phase="question"; host.left=host.secs; host.endsAt=Date.now()+host.secs*1000; $("#btnReveal").hidden=false;
-    $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · valendo!`;
+    $("#hqNum").textContent = `${roundLabel(host.idx)} · valendo!`;
     send("question", questionPayload());
     host.timer=setInterval(tick,250); setPlayButton("running");
     makeSay(pick(actors), "VALENDO!", 90);
@@ -380,12 +386,12 @@ function startReveal(){
 function revPayload(i){
   const it=host.deck[i], L=host.log[i]||{answers:{},marks:{}}, results={};
   playing().forEach(([id,t])=>{ results[id]={ name:t.name, color:t.color, answer:L.answers[id]??null, ok:!!(L.marks||{})[id] }; });
-  return { i, total:host.deck.length, theme:it.theme, text:it.q[0], correct:it.q[1], results };
+  return { i, total:host.deck.length, label:roundLabel(i), theme:it.theme, text:it.q[0], correct:it.q[1], results };
 }
 function showReveal(i){
   host.ridx=i; const p=revPayload(i);
   show("hostRev");
-  $("#rNum").textContent=`Revelação · pergunta ${i+1} de ${p.total}`;
+  $("#rNum").textContent=`Revelação · ${roundLabel(i)}`;
   $("#rTheme").textContent=p.theme; $("#rText").textContent=p.text; $("#rCorrect").textContent=p.correct;
   const box=$("#rAnswers"); box.innerHTML="";
   Object.entries(p.results).forEach(([id,r])=>{
@@ -405,8 +411,29 @@ $("#btnRevNext").addEventListener("click", ()=>{
   host.log.forEach(L=>Object.entries((L&&L.marks)||{}).forEach(([id,ok])=>{ if(ok && host.teams[id]) host.teams[id].score++; }));
   hostEnd();
 });
+// ======================= MATCH HISTORY (saved on the host's device) =======================
+const HISTORY_KEY="quiz.history";
+function loadHistory(){ const h=load(HISTORY_KEY); return Array.isArray(h)?h:[]; }
+function recordMatch(list){
+  if(!host.gameId) return;
+  const h=loadHistory(); if(h.some(m=>m.id===host.gameId)) return;     // once per match (reloads, re-renders)
+  const top=list.length?list[0].score:0;
+  h.unshift({ id:host.gameId, at:Date.now(), rounds:host.rounds||host.count, questions:host.deck.length, themes:host.themes.slice(), levels:host.levels.slice(),
+    winners:list.filter(x=>x.score===top).map(x=>x.team), scores:list.map(x=>({ team:x.team, color:x.color, score:x.score })) });
+  store(HISTORY_KEY, h.slice(0,50)); renderHistory();
+}
+function renderHistory(){
+  const h=loadHistory(), box=$("#historyList"); box.innerHTML=""; $("#historyCard").hidden=!h.length;
+  h.slice(0,20).forEach(m=>{ const li=el("li");
+    const d=new Date(m.at);
+    li.append(el("span","when", d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})+" · "+m.rounds+" rodada"+(m.rounds>1?"s":"")+" · "+m.themes.join(", ")));
+    li.append(el("span","who", "🏆 "+(m.winners.length>1?"Empate: "+m.winners.join(" e "):m.winners[0]||"—")));
+    li.append(el("span","pts", m.scores.map(x=>x.team+" "+x.score).join(" · ")));
+    box.append(li); });
+}
+$("#btnClearHistory").addEventListener("click", ()=>{ const b=$("#btnClearHistory"); if(b.dataset.armed){ store(HISTORY_KEY,undefined); renderHistory(); delete b.dataset.armed; b.textContent="Apagar"; return; } b.dataset.armed="1"; b.textContent="Confirma apagar"; setTimeout(()=>{ delete b.dataset.armed; b.textContent="Apagar"; },5000); });
 function hostEnd(){
-  host.phase="end"; const list=scoreList();
+  host.phase="end"; const list=scoreList(); recordMatch(list);
   renderRank($("#hRank"), list); $("#hWinner").textContent=winnerText(list);
   show("hostEnd"); sceneReact(true); send("end",{ scores:list }); saveHost();
 }
@@ -444,7 +471,7 @@ async function joinRoom(code){
   $("#btnEnter").disabled=true; $("#btnEnter").textContent="Conectando…";
   try{ await openPlayer(code, {
     teams: p => applyTeams(p.teams),
-    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores([]); show("playerWait"); },
+    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=p.label||`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores([]); show("playerWait"); },
     question: p => { if(p.teams) applyTeams(p.teams); if(player.me?.ok) playerQuestion(p); },
     tick: p => { if(p.idx!==player.idx) return; startCountdown(p.left); },
     pause: p => { if(p.idx!==player.idx) return; stopCountdown(); const c=$("#pClock"); c.textContent=p.left+"s · pausado"; c.classList.add("paused"); c.classList.remove("warn"); $("#ptbar").classList.remove("warn"); makeSay(pick(actors),"pausa!",100); },
@@ -507,7 +534,7 @@ function playerQuestion(p){
   const fresh = p.idx!==player.shownIdx;
   player.idx=p.idx; player.shownIdx=p.idx; player.secs=p.secs; player.open=true;
   if(fresh){ player.sent=null; $("#pAnswer").value=""; }
-  $("#pqNum").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#pqTheme").textContent=p.theme; $("#pqText").textContent=p.text;
+  $("#pqNum").textContent=p.label||`Pergunta ${p.idx+1} de ${p.total}`; $("#pqTheme").textContent=p.theme; $("#pqText").textContent=p.text;
   $("#pFeedback").hidden=true; $("#pAnswer").disabled=false; $("#btnSend").disabled=false;
   $("#pSent").textContent = player.sent ? "Enviado: "+player.sent : "";
   startCountdown(p.left);
@@ -538,7 +565,7 @@ function playerClosed(p){
 function playerRev(p){
   if(!player.me) return;
   player.idx=-2; stopCountdown(); show("playerRev");
-  $("#prNum").textContent=`Revelação · pergunta ${p.i+1} de ${p.total}`;
+  $("#prNum").textContent=`Revelação · `+(p.label||`pergunta ${p.i+1} de ${p.total}`);
   $("#prTheme").textContent=p.theme; $("#prText").textContent=p.text; $("#prCorrect").textContent=p.correct;
   const me=p.results[player.id], f=$("#prMine");
   if(me){ f.hidden=false; f.className="feedback "+(me.ok?"ok":"no"); f.textContent = me.answer==null ? "Vocês não responderam essa." : (me.ok ? "Vocês acertaram! ("+me.answer+")" : "Vocês responderam: "+me.answer); }
