@@ -231,7 +231,7 @@ function renderTeamList(){
     cb.addEventListener("change", ()=>{ t.ok=cb.checked; broadcastTeams(); });
     lab.append(cb, el("i","dot"), document.createTextNode(t.name)); box.append(lab);
   });
-  $("#btnStart").disabled = !playing().length;
+  $("#btnStart").disabled = false;
   $("#confirmedCount").textContent = playing().length+" confirmada(s) de "+ids.length;
 }
 function renderThemes(){
@@ -265,7 +265,7 @@ $("#copyUrl").addEventListener("click", async ()=>{
 
 $("#btnStart").addEventListener("click", ()=>{
   if(!host.themes.length) return msg("#lobbyMsg","Escolhe pelo menos um tema (ou mistura tudo).");
-  if(!playing().length) return msg("#lobbyMsg","Confirma pelo menos uma equipe.");
+  if(!playing().length) { msg("#lobbyMsg","Marca a caixinha da equipe lá em cima pra confirmar ela no jogo."); $("#teamList").scrollIntoView({behavior:"smooth",block:"center"}); return; }
   msg("#lobbyMsg","");
   // one shuffled pool per theme; each round takes one question from every theme (in a fresh random order)
   const seen=new Set(), pools={};
