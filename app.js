@@ -21,7 +21,7 @@ const CREW = [
 const $ = s => document.querySelector(s);
 const shuffle = a => { for (let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const LETTERS = ["A","B","C","D"];
-const SCREENS = ["home","hostLobby","hostGame","hostEnd","playerJoin","playerWait","playerGame","playerEnd"];
+const SCREENS = ["home","hostLobby","hostGame","hostRev","hostEnd","playerJoin","playerWait","playerGame","playerRev","playerEnd"];
 function show(id){ SCREENS.forEach(s=>$("#"+s).hidden = s!==id); window.scrollTo({top:0}); }
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
 function roomCode(){ const C="ABCDEFGHJKLMNPQRSTUVWXYZ"; let s=""; for(let i=0;i<4;i++) s+=C[Math.floor(Math.random()*C.length)]; return s; }
@@ -153,11 +153,12 @@ $("#importCustom").addEventListener("click", ()=>{
 syncCustom();
 
 // ======================= HOST =======================
-const host = { code:null, teams:{}, themes:[], count:15, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, timer:null, left:0, phase:"lobby" };
+// Answers are kept secret during the game (host.log[idx].answers) and only revealed, question by question, at the end.
+const host = { code:null, teams:{}, themes:[], count:15, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, log:[], ridx:0, timer:null, left:0, phase:"lobby" };
 const playing = () => Object.entries(host.teams).filter(([,t])=>t.ok);
 
 const HOST_KEY="quiz.host";
-function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, levels:host.levels, deck:host.deck, idx:host.idx, answers:host.answers, marks:host.marks, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
+function saveHost(){ try{ store(HOST_KEY,{ code:host.code, teams:host.teams, themes:host.themes, count:host.count, secs:host.secs, levels:host.levels, deck:host.deck, idx:host.idx, answers:host.answers, log:host.log, ridx:host.ridx, phase:host.phase, savedAt:Date.now() }); }catch(e){} }
 function clearHost(){ store(HOST_KEY, undefined); }
 const savedHost = load(HOST_KEY);
 if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
@@ -166,7 +167,7 @@ if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
 $("#btnResume").addEventListener("click", ()=>startHost(savedHost));
 $("#btnHost").addEventListener("click", ()=>startHost(null));
 async function startHost(saved){
-  if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, marks:saved.marks||{}, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
+  if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:saved.count||15, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], idx:saved.idx||0, answers:saved.answers||{}, log:saved.log||[], ridx:saved.ridx||0, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
   else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
   try{ await openHost(host.code, {
@@ -198,7 +199,8 @@ async function startHost(saved){
   renderLevels();
   if(saved && host.deck.length && host.phase!=="lobby"){
     if(host.phase==="end") hostEnd();
-    else if(host.phase==="reveal"){ show("hostGame"); loadQuestionView(); host.phase="reveal"; revealView(); }
+    else if(host.phase==="reveal") showReveal(host.ridx);
+    else if(host.phase==="closed"){ show("hostGame"); loadQuestionView(); closedView(); }
     else { show("hostGame"); loadQuestion(); }
   } else show("hostLobby");
   saveHost();
@@ -253,20 +255,20 @@ $("#btnStart").addEventListener("click", ()=>{
   if(!pool.length) return msg("#lobbyMsg","Nenhuma pergunta com essa combinação de temas e dificuldade.");
   host.deck=[]; while(host.deck.length<host.count) host.deck.push(...pool); host.deck=host.deck.slice(0,host.count);
   Object.values(host.teams).forEach(t=>t.score=0);
-  host.idx=0; show("hostGame"); loadQuestion();
+  host.log=[]; host.ridx=0; host.idx=0; show("hostGame"); loadQuestion();
 });
 
 function loadQuestion(){
-  host.marks={}; host.answers={}; host.phase="ready"; stopTimer(); host.left=host.secs;
+  host.answers={}; host.phase="ready"; stopTimer(); host.left=host.secs;
   loadQuestionView();
-  send("ready", { idx:host.idx, total:host.deck.length, scores:scoreList() });
+  send("ready", { idx:host.idx, total:host.deck.length });
   saveHost();
 }
 function loadQuestionView(){
   const item=host.deck[host.idx]; const [text,correct]=item.q; item.correct=correct;
   $("#hqNum").textContent = `Pergunta ${host.idx+1} de ${host.deck.length} · só você vê. Dá play quando quiser.`;
   $("#hqTheme").textContent=item.theme + (["","  ·  fácil","  ·  médio","  ·  difícil"][qLevel(item.q)]||""); $("#hqText").textContent=text;
-  $("#hCorrect").textContent = correct;
+  $("#hCorrect").textContent = correct; $("#hCorrectRow").hidden = true; $("#btnPeek").textContent = "Ver resposta (só pra mim)";
   $("#hClock").textContent=host.secs+"s"; $("#hClock").classList.remove("warn"); $("#htbar").style.width="100%"; $("#htbar").classList.remove("warn");
   setPlayButton("play"); $("#hClock").classList.remove("paused"); $("#btnReveal").hidden=true; $("#btnNext").hidden=true; $("#hFeedback").hidden=true;
   renderHostAnswers();
@@ -289,10 +291,11 @@ function autoOk(answer, correct, alts){
   return false;
 }
 function sendCurrentState(){
-  if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length, scores:scoreList() });
+  if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length });
   else if(host.phase==="question") send("question", questionPayload());
   else if(host.phase==="paused") send("pause",{ idx:host.idx, left:host.left });
-  else if(host.phase==="reveal") send("reveal", revealPayload());
+  else if(host.phase==="closed") send("closed", { idx:host.idx, total:host.deck.length, answers:host.answers });
+  else if(host.phase==="reveal") send("rev", revPayload(host.ridx));
   else if(host.phase==="end") send("end", { scores: scoreList() });
 }
 function setPlayButton(mode){ // "play" | "running" | "paused"
@@ -328,48 +331,79 @@ function tick(){
   $("#hClock").textContent=host.left+"s"; $("#hClock").classList.toggle("warn",warn);
   $("#htbar").style.width=(host.left/host.secs*100)+"%"; $("#htbar").classList.toggle("warn",warn);
   send("tick",{ left:host.left, idx:host.idx });
-  if(host.left<=0){ $("#hClock").textContent="TEMPO!"; actors.forEach(a=>{a.state="jump";a.t=0;}); makeSay(pick(actors),"ACABOU O TEMPO!",150); reveal(); }
+  if(host.left<=0){ $("#hClock").textContent="TEMPO!"; actors.forEach(a=>{a.state="jump";a.t=0;}); makeSay(pick(actors),"ACABOU O TEMPO!",150); closeQuestion(); }
 }
+// during the game the host only sees WHO answered, never what
 function renderHostAnswers(){
   const box=$("#hAnswers"); box.innerHTML="";
-  const revealing = host.phase==="reveal";
+  const closed = host.phase==="closed";
   playing().forEach(([id,t])=>{
-    const row=el(revealing?"button":"div","arow"+(revealing?" btn":"")+(revealing && host.marks[id]?" hit":"")); row.style.setProperty("--team",t.color);
-    if(revealing){ row.type="button"; row.addEventListener("click", ()=>{ host.marks[id]=!host.marks[id]; renderHostAnswers(); saveHost(); }); }
-    const a=host.answers[id];
-    row.append(el("i","dot"), el("b",null,t.name), el("span","ans", a==null ? (revealing?"— não respondeu":"… pensando") : a), el("em",null,t.score+(revealing?(host.marks[id]?" +1":""):"")));
+    const row=el("div","arow"+(host.answers[id]!=null?" hit":"")); row.style.setProperty("--team",t.color);
+    row.append(el("i","dot"), el("b",null,t.name), el("span","ans", host.answers[id]!=null ? "✓ respondeu" : (closed ? "— não respondeu" : "… pensando")));
     box.append(row);
   });
-  $("#hAnswersLabel").textContent = revealing ? "Toca pra corrigir quem acertou" : `Respostas (${Object.keys(host.answers).length}/${playing().length})`;
-}
-function revealPayload(){
-  const it=host.deck[host.idx]; const results={};
-  playing().forEach(([id])=>{ results[id]={ answer:host.answers[id]??null, ok:!!host.marks[id] }; });
-  return { idx:host.idx, correct:it.correct, results, scores:scoreList() };
+  $("#hAnswersLabel").textContent = `Responderam: ${Object.keys(host.answers).length} de ${playing().length}`;
 }
 function scoreList(){ return playing().map(([id,t])=>({id,team:t.name,color:t.color,score:t.score})).sort((a,b)=>b.score-a.score); }
-function reveal(){
+function closeQuestion(){
   if(host.phase!=="question" && host.phase!=="paused") return;
-  stopTimer(); host.phase="reveal";
-  const it=host.deck[host.idx];
-  playing().forEach(([id])=>{ host.marks[id]=autoOk(host.answers[id], it.correct, qAlts(it.q)); });
-  host.marks = {...host.marks};
-  const anyOk=Object.values(host.marks).some(Boolean);
-  revealView(); sceneReact(anyOk);
-  send("reveal", revealPayload()); saveHost();
+  stopTimer(); host.phase="closed";
+  host.log[host.idx] = { answers:{...host.answers} };
+  closedView();
+  send("closed", { idx:host.idx, total:host.deck.length, answers:host.answers }); saveHost();
 }
-function revealView(){
-  const f=$("#hFeedback"); f.hidden=false; f.className="feedback ok"; f.textContent="Tempo encerrado. Confere as respostas e vai pra próxima.";
+function closedView(){
+  const f=$("#hFeedback"); f.hidden=false; f.className="feedback ok"; f.textContent="Tempo encerrado. As respostas ficam guardadas em segredo até o final.";
   $("#btnPlay").hidden=true; $("#btnReveal").hidden=true; $("#btnNext").hidden=false;
-  $("#btnNext").textContent = host.idx+1>=host.deck.length ? "Fechar e ver resultado" : "Pontuar e ir pra próxima";
+  $("#btnNext").textContent = host.idx+1>=host.deck.length ? "Acabaram as perguntas! Ir pra revelação" : "Próxima pergunta";
   $("#hClock").textContent="TEMPO!"; $("#htbar").style.width="0%";
   renderHostAnswers();
 }
 $("#btnReveal").addEventListener("click", ()=>{ host.endsAt=Date.now(); host.phase="question"; tick(); });
+$("#btnPeek").addEventListener("click", ()=>{ const r=$("#hCorrectRow"); r.hidden=!r.hidden; $("#btnPeek").textContent = r.hidden ? "Ver resposta (só pra mim)" : "Esconder resposta"; });
 $("#btnNext").addEventListener("click", ()=>{
-  playing().forEach(([id,t])=>{ if(host.marks[id]) t.score++; });
-  send("reveal", revealPayload()); saveHost();
-  host.idx++; if(host.idx>=host.deck.length) return hostEnd(); loadQuestion();
+  if(!host.log[host.idx]) host.log[host.idx] = { answers:{...host.answers} };
+  host.idx++; saveHost();
+  if(host.idx>=host.deck.length) return startReveal();
+  loadQuestion();
+});
+
+// ======================= FINAL REVEAL: one question at a time, then the scoreboard =======================
+function startReveal(){
+  host.deck.forEach((it,i)=>{                       // auto-mark every answer once; the host can fix marks while revealing
+    const L = host.log[i] || (host.log[i] = { answers:{} });
+    if(!L.marks){ L.marks={}; playing().forEach(([id])=>{ L.marks[id]=autoOk(L.answers[id], it.q[1], qAlts(it.q)); }); }
+  });
+  host.phase="reveal"; host.ridx=0; saveHost(); showReveal(0);
+  makeSay(pick(actors), "hora da verdade!", 150);
+}
+function revPayload(i){
+  const it=host.deck[i], L=host.log[i]||{answers:{},marks:{}}, results={};
+  playing().forEach(([id,t])=>{ results[id]={ name:t.name, color:t.color, answer:L.answers[id]??null, ok:!!(L.marks||{})[id] }; });
+  return { i, total:host.deck.length, theme:it.theme, text:it.q[0], correct:it.q[1], results };
+}
+function showReveal(i){
+  host.ridx=i; const p=revPayload(i);
+  show("hostRev");
+  $("#rNum").textContent=`Revelação · pergunta ${i+1} de ${p.total}`;
+  $("#rTheme").textContent=p.theme; $("#rText").textContent=p.text; $("#rCorrect").textContent=p.correct;
+  const box=$("#rAnswers"); box.innerHTML="";
+  Object.entries(p.results).forEach(([id,r])=>{
+    const row=el("button","arow btn"+(r.ok?" hit":"")); row.type="button"; row.style.setProperty("--team",r.color);
+    row.addEventListener("click", ()=>{ const L=host.log[i]; L.marks[id]=!L.marks[id]; saveHost(); showReveal(i); });
+    row.append(el("i","dot"), el("b",null,r.name), el("span","ans", r.answer==null ? "— não respondeu" : r.answer), el("em",null, r.ok ? "✓ +1" : "✗"));
+    box.append(row);
+  });
+  $("#btnRevPrev").disabled = i===0;
+  $("#btnRevNext").textContent = i+1>=p.total ? "Ver placar final 🏆" : "Próxima resposta";
+  send("rev", p); saveHost();
+}
+$("#btnRevPrev").addEventListener("click", ()=>{ if(host.ridx>0) showReveal(host.ridx-1); });
+$("#btnRevNext").addEventListener("click", ()=>{
+  if(host.ridx+1<host.deck.length){ showReveal(host.ridx+1); return; }
+  Object.values(host.teams).forEach(t=>t.score=0);
+  host.log.forEach(L=>Object.entries((L&&L.marks)||{}).forEach(([id,ok])=>{ if(ok && host.teams[id]) host.teams[id].score++; }));
+  hostEnd();
 });
 function hostEnd(){
   host.phase="end"; const list=scoreList();
@@ -387,7 +421,7 @@ $("#btnDissolveConfirm").addEventListener("click", ()=>{
   setTimeout(()=>{ Object.values(conns).forEach(c=>{ try{ c.close(); }catch(e){} }); conns={}; if(peer){ try{ peer.destroy(); }catch(e){} peer=null; }
     stopTimer(); host.teams={}; host.deck=[]; host.phase="lobby"; host.code=null; clearHost(); $("#btnResume").hidden=true; show("home"); }, 400);
 });
-$("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
+$("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; host.log=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
 $("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
 // Hide the aquarium while the on-screen keyboard is up, so the question stays visible on phones
@@ -410,11 +444,12 @@ async function joinRoom(code){
   $("#btnEnter").disabled=true; $("#btnEnter").textContent="Conectando…";
   try{ await openPlayer(code, {
     teams: p => applyTeams(p.teams),
-    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores(p.scores); show("playerWait"); },
+    ready: p => { if(!player.me?.ok) return; player.idx=p.idx; player.sent=null; player.open=false; $("#pAnswer").value=""; $("#pSent").textContent=""; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Esperando o host dar play…"; renderPlayerScores([]); show("playerWait"); },
     question: p => { if(p.teams) applyTeams(p.teams); if(player.me?.ok) playerQuestion(p); },
     tick: p => { if(p.idx!==player.idx) return; startCountdown(p.left); },
     pause: p => { if(p.idx!==player.idx) return; stopCountdown(); const c=$("#pClock"); c.textContent=p.left+"s · pausado"; c.classList.add("paused"); c.classList.remove("warn"); $("#ptbar").classList.remove("warn"); makeSay(pick(actors),"pausa!",100); },
-    reveal: p => playerReveal(p),
+    closed: p => playerClosed(p),
+    rev: p => playerRev(p),
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
     kick: () => { store(PLAYER_KEY, undefined); stopCountdown(); player.code=null; if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; $("#inCode").value=""; msg("#joinMsg","O host desfez a sala. Valeu por jogar!"); show("playerJoin"); },
     lobby: () => { player.idx=-1; $("#pScoresCard").hidden=true; $("#pTeamsCard").hidden=false; waitLobby(); },
@@ -488,15 +523,29 @@ function sendAnswer(){
 }
 $("#btnSend").addEventListener("click", sendAnswer);
 $("#pAnswer").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); sendAnswer(); } });
-function playerReveal(p){
-  if(p.idx!==player.idx || !player.me?.ok) return;
-  if($("#playerGame").hidden) return;
-  const wasOpen = player.open; player.open=false; stopCountdown();
+// time's up: the answer is locked and kept secret until the final reveal
+function playerClosed(p){
+  if(!player.me?.ok) return;
+  if(p.idx!==player.idx || $("#playerGame").hidden){ player.idx=p.idx; $("#waitTitle").textContent=`Pergunta ${p.idx+1} de ${p.total}`; $("#waitText").textContent="Tempo encerrado. Esperando a próxima…"; show("playerWait"); return; }
+  player.open=false; stopCountdown();
   $("#pAnswer").disabled=true; $("#btnSend").disabled=true;
-  const me=p.results[player.id]; const f=$("#pFeedback"); f.hidden=false;
-  if(me && me.ok){ f.className="feedback ok"; f.textContent="Acertou! +1 ponto · resposta: "+p.correct; if(wasOpen) sceneReact(true); }
-  else { f.className="feedback no"; f.textContent = (me && me.answer==null ? "Não respondeu a tempo. " : "Não valeu. ")+"Resposta: "+p.correct; if(wasOpen) sceneReact(false); }
+  const mine=(p.answers||{})[player.id]; const f=$("#pFeedback"); f.hidden=false; f.className="feedback ok";
+  f.textContent = mine!=null ? "Resposta guardada: "+mine+". O resultado sai só no final!" : "Não deu tempo de responder. O resultado sai no final.";
   setPlayerClock(0,false); $("#pClock").textContent="tempo encerrado";
-  renderPlayerScores(p.scores);
+  makeSay(pick(actors), pick(["será que acertou?","segredo!","só no final..."]), 120);
+}
+// final reveal, mirrored from the host one question at a time
+function playerRev(p){
+  if(!player.me) return;
+  player.idx=-2; stopCountdown(); show("playerRev");
+  $("#prNum").textContent=`Revelação · pergunta ${p.i+1} de ${p.total}`;
+  $("#prTheme").textContent=p.theme; $("#prText").textContent=p.text; $("#prCorrect").textContent=p.correct;
+  const me=p.results[player.id], f=$("#prMine");
+  if(me){ f.hidden=false; f.className="feedback "+(me.ok?"ok":"no"); f.textContent = me.answer==null ? "Vocês não responderam essa." : (me.ok ? "Vocês acertaram! ("+me.answer+")" : "Vocês responderam: "+me.answer); }
+  else f.hidden=true;
+  const box=$("#prAnswers"); box.innerHTML="";
+  Object.entries(p.results).forEach(([id,r])=>{ const row=el("div","arow"+(r.ok?" hit":"")); row.style.setProperty("--team",r.color);
+    row.append(el("i","dot"), el("b",null,r.name), el("span","ans", r.answer==null ? "—" : r.answer), el("em",null, r.ok ? "✓" : "✗")); box.append(row); });
+  if(me && player.revSeen!==p.i){ player.revSeen=p.i; sceneReact(!!me.ok); }
 }
 $("#btnLeave").addEventListener("click", ()=>{ store(PLAYER_KEY, undefined); stopCountdown(); if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; player.code=null; show("home"); });

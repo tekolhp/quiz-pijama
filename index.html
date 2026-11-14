@@ -284,13 +284,28 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
       <div class="topbar"><span class="qtheme" id="hqTheme"></span><span class="clock" id="hClock"></span></div>
       <div class="progress tbar"><i id="htbar"></i></div>
       <p class="question" id="hqText"></p>
-      <p class="correct">Resposta: <span id="hCorrect"></span></p>
+      <p class="correct" id="hCorrectRow" hidden>Resposta: <span id="hCorrect"></span></p>
+      <button class="btn ghost" id="btnPeek" type="button" style="padding:6px 10px;font-size:15px;align-self:flex-start">Ver resposta (só pra mim)</button>
       <button class="btn primary play" id="btnPlay" type="button"><svg viewBox="0 0 12 12" width="34" height="34" aria-hidden="true"><path d="M3 1h2v2h2v2h2v2H7v2H5v2H3z" fill="currentColor"/></svg><span>PLAY<small>libera a pergunta e o tempo pra todo mundo</small></span></button>
       <button class="btn" id="btnReveal" type="button" hidden>Encerrar o tempo agora</button>
       <p class="feedback" id="hFeedback" hidden></p>
       <p class="label" id="hAnswersLabel">Respostas</p>
       <div class="answers" id="hAnswers"></div>
       <button class="btn primary" id="btnNext" type="button" hidden>Próxima pergunta</button>
+    </div>
+  </div>
+</section>
+
+<section id="hostRev" hidden>
+  <div class="stack" style="gap:14px">
+    <div class="turn" id="rNum"></div>
+    <div class="card">
+      <span class="qtheme" id="rTheme"></span>
+      <p class="question" id="rText"></p>
+      <p class="correct" style="font-size:16px">Resposta: <span id="rCorrect"></span></p>
+      <p class="label">Toca numa equipe pra corrigir</p>
+      <div class="answers" id="rAnswers"></div>
+      <div class="row"><button class="btn" id="btnRevPrev" type="button">Anterior</button><button class="btn primary" id="btnRevNext" type="button">Próxima resposta</button></div>
     </div>
   </div>
 </section>
@@ -340,6 +355,19 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
       <button class="btn primary" id="btnSend" type="button">Enviar resposta</button>
       <p class="small" id="pSent"></p>
       <p class="feedback" id="pFeedback" hidden></p>
+    </div>
+  </div>
+</section>
+
+<section id="playerRev" hidden>
+  <div class="stack" style="gap:14px">
+    <div class="turn" id="prNum"></div>
+    <div class="card">
+      <span class="qtheme" id="prTheme"></span>
+      <p class="question" id="prText"></p>
+      <p class="correct" style="font-size:16px">Resposta: <span id="prCorrect"></span></p>
+      <p class="feedback" id="prMine" hidden></p>
+      <div class="answers" id="prAnswers"></div>
     </div>
   </div>
 </section>
