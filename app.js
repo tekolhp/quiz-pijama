@@ -107,7 +107,8 @@ const qAlts = q => q.slice(2).filter(x=>typeof x==="string");
 const CUSTOM_THEME = "Perguntas da família";
 const CUSTOM_KEY = "quiz.custom";
 function loadCustom(){ const c=load(CUSTOM_KEY); return Array.isArray(c)?c:[]; }
-function syncCustom(){ const c=loadCustom(); if(c.length) BANK[CUSTOM_THEME]=c; else delete BANK[CUSTOM_THEME]; }
+const FAMILY_FIXED = (BANK[CUSTOM_THEME]||[]).slice();
+function syncCustom(){ const all=FAMILY_FIXED.concat(loadCustom()); if(all.length) BANK[CUSTOM_THEME]=all; else delete BANK[CUSTOM_THEME]; }
 let editingCustom = -1;
 function renderCustom(){
   const box=$("#customList"); box.innerHTML="";
