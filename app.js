@@ -34,7 +34,7 @@ let peer = null;            // this device's Peer
 let conns = {};             // host: peerId -> DataConnection
 let hostConn = null;        // player: connection to the host
 let handlers = {};
-function dispatch(ev, payload){ if(handlers[ev]) handlers[ev](payload); }
+function dispatch(ev, payload, conn){ if(handlers[ev]) handlers[ev](payload, conn); }
 const PEER_OPTS = { debug:1, pingInterval:3000 };
 function newPeer(id){
   if(peer){ try{ peer.destroy(); }catch(e){} }
@@ -55,8 +55,8 @@ async function openHost(code, h){
   await withRetry(()=>newPeer(PEER_PREFIX+code), 4, 2500);   // a stale id from a reload clears within seconds
   keepRegistered();
   peer.on("connection", c=>{
-    c.on("open", ()=>{ conns[c.peer]=c; });
-    c.on("data", d=>{ if(d && d.ev) dispatch(d.ev, d.payload); });
+    c.on("open", ()=>{ conns[c.peer]=c; c._seen=Date.now(); });
+    c.on("data", d=>{ c._seen=Date.now(); if(d && d.ev==="hb") c._hb=true; if(d && d.ev && d.ev!=="hb") dispatch(d.ev, d.payload, c); });
     c.on("close", ()=>{ delete conns[c.peer]; });
     c.on("error", ()=>{ delete conns[c.peer]; });
   });
@@ -74,8 +74,11 @@ async function openPlayer(code, h){
     const c = peer.connect(PEER_PREFIX+code, { reliable:true });
     const t = setTimeout(()=>rej(new Error("timeout")), 8000);
     c.on("open", ()=>{ clearTimeout(t); hostConn=c; res(); });
-    c.on("data", d=>{ if(d && d.ev) dispatch(d.ev, d.payload); });
-    c.on("close", ()=>{ hostConn=null; reconnectLoop(code); });
+    c.on("data", d=>{ player.hostSeen=Date.now(); if(!d || !d.ev) return;
+      if(d.ev==="hb"){ onHostBeat(d.payload); return; }
+      dispatch(d.ev, d.payload);
+      const k=stateKeyFor(d.ev, d.payload); if(k && player.me?.ok) player.stateKey=k; });
+    c.on("close", ()=>{ if(hostConn===c){ hostConn=null; reconnectLoop(code); } });
     const onErr = e=>{ clearTimeout(t); peer.off("error", onErr); rej(e); };
     peer.on("error", onErr);
   }), 4, 2000);
@@ -92,6 +95,32 @@ async function reconnectLoop(code){
   reconnecting=false;
   $("#waitTitle").textContent="Não deu pra reconectar"; $("#waitText").textContent="Pede pro host retomar a sala e toca em Sair pra entrar de novo.";
 }
+// Heartbeat: the host beats every 2s with its current state. A phone that missed a message (screen locked,
+// wifi blink) notices the mismatch and asks for a resync; a phone that hears nothing for 20s rebuilds the link.
+function stateKeyFor(ev, p){
+  if(ev==="ready") return "ready:"+p.idx; if(ev==="question") return "question:"+p.idx; if(ev==="pause") return "paused:"+p.idx;
+  if(ev==="closed") return "closed:"+p.idx; if(ev==="rev") return "reveal:"+p.i; if(ev==="end") return "end"; if(ev==="lobby") return "lobby";
+  return null;
+}
+function hostStateKey(){
+  const ph=host.phase; if(ph==="reveal") return "reveal:"+host.ridx; if(ph==="end"||ph==="lobby") return ph; return ph+":"+host.idx;
+}
+function onHostBeat(p){
+  if(!p || !player.me?.ok || p.key==="lobby" || p.key===player.stateKey) return;
+  if(Date.now()-(player.syncAt||0) < 3000) return;
+  player.syncAt=Date.now(); send("sync",{ id:player.id });
+}
+setInterval(()=>{
+  if(peer && host.code && !hostConn){   // host
+    const now=Date.now(), m={ev:"hb",payload:{ key:hostStateKey() }};
+    Object.entries(conns).forEach(([id,c])=>{ if(c._hb && now-c._seen>20000){ try{ c.close(); }catch(e){} delete conns[id]; return; } try{ c.send(m); }catch(e){} });
+  } else if(hostConn && player.code){    // player
+    try{ hostConn.send({ev:"hb"}); }catch(e){}
+    if(player.hostSeen && Date.now()-player.hostSeen>20000 && !reconnecting){ const c=hostConn; hostConn=null; player.hostSeen=0; try{ c.close(); }catch(e){} reconnectLoop(player.code); }
+  }
+}, 2000);
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && hostConn && player.me?.ok){ player.syncAt=Date.now(); send("sync",{ id:player.id }); } });
+function sendTo(c, ev, payload){ try{ c.send({ev,payload}); }catch(e){} }
 function send(ev, payload){
   const m={ev,payload};
   if(hostConn){ try{ hostConn.send(m); }catch(e){} }
@@ -194,6 +223,11 @@ async function startHost(saved){
         makeSay(pick(actors), c.name+" chegou!", 120);
       }
       broadcastTeams(); if(host.phase!=="lobby") sendCurrentState();
+    },
+    sync: (p, c) => {
+      if(!p.id || !host.teams[p.id] || !c) return;
+      sendTo(c, "teams", { teams: host.teams });
+      if(host.phase==="lobby") sendTo(c, "lobby", {}); else sendCurrentState(c);
     },
     answer: p => {
       if((host.phase!=="question" && host.phase!=="paused") || p.idx!==host.idx || !host.teams[p.id]?.ok) return;
@@ -311,7 +345,8 @@ function autoOk(answer, correct, alts){
   }
   return false;
 }
-function sendCurrentState(){
+function sendCurrentState(to){
+  const send = to ? (ev,p)=>sendTo(to,ev,p) : window.send;
   if(host.phase==="ready") send("ready",{ idx:host.idx, total:host.deck.length, label:roundLabel(host.idx) });
   else if(host.phase==="question") send("question", questionPayload());
   else if(host.phase==="paused") send("pause",{ idx:host.idx, left:host.left });
@@ -497,6 +532,7 @@ async function joinRoom(code){
     lobby: () => { player.idx=-1; $("#pScoresCard").hidden=true; $("#pTeamsCard").hidden=false; waitLobby(); },
   }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; return msg("#joinMsg","Não achei essa sala. Confere o código e se o host já criou a sala."); }
   $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar";
+  player.hostSeen=Date.now(); player.stateKey=null;
   send("join",{ id:player.id });
   store(PLAYER_KEY,{ code, at:Date.now() });
   $("#waitTitle").textContent="Entrando…"; $("#waitText").textContent="Esperando o host te ver.";
