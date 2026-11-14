@@ -89,6 +89,8 @@ input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .row .btn{flex:1 1 140px}
 .stack{display:flex;flex-direction:column;gap:20px}
+.qr{align-self:center;margin:6px auto 0;width:min(220px,62vw);aspect-ratio:1;max-width:100%;background:#fff;padding:10px;border:3px solid var(--line);box-shadow:4px 4px 0 #000}
+.qr svg{display:block;width:100%;height:100%;shape-rendering:crispEdges}
 .history{margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .history li{list-style:none;display:flex;flex-direction:column;gap:2px;padding:10px 12px;background:var(--bg);border:2px solid var(--line)}
 .history .when{font-size:13px;color:var(--muted)}
@@ -211,6 +213,8 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
     <div>
       <p class="label">Sala aberta · manda o código</p>
       <div class="code" id="roomCode"></div>
+      <div class="qr" id="joinQr" aria-label="QR code pra entrar na sala"></div>
+      <p class="small" style="text-align:center">Aponta a câmera do celular aqui pra entrar</p>
       <p class="url" id="joinUrl"></p>
       <button class="btn ghost" id="copyUrl" type="button" style="padding:6px 10px;font-size:15px">Copiar link</button>
       <p class="small" id="hostStatus"></p>
@@ -407,6 +411,7 @@ html.bg-lock,html.bg-lock body{overflow:hidden;overscroll-behavior:none;touch-ac
 <script src="bank/tecnologia.js"></script>
 <script src="bank/bobesponja.js"></script>
 <script>const BANK={}; BANK_PARTS.forEach(p=>{ BANK[p.theme]=p.items; });</script>
+<script src="vendor/qrcode.js"></script>
 <script src="app.js"></script>
 <script type="module" src="pfx/bridge.js"></script>
 </body>

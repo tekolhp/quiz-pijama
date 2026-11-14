@@ -152,6 +152,19 @@ $("#importCustom").addEventListener("click", ()=>{
 });
 syncCustom();
 
+// QR code for the join link (vendor/qrcode.js, MIT, Kazuhiko Arase)
+function renderJoinQr(url){
+  const box=$("#joinQr"); box.innerHTML="";
+  if(typeof qrcode!=="function"){ box.hidden=true; return; }
+  try{
+    const q=qrcode(0,"M"); q.addData(url); q.make();
+    const n=q.getModuleCount(); let d="";
+    for(let y=0;y<n;y++) for(let x=0;x<n;x++) if(q.isDark(y,x)) d+=`M${x} ${y}h1v1h-1z`;
+    box.innerHTML=`<svg viewBox="0 0 ${n} ${n}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code"><path d="${d}" fill="#0b1a3a"/></svg>`;
+    box.hidden=false;
+  }catch(e){ box.hidden=true; }
+}
+
 // ======================= HOST =======================
 // Answers are kept secret during the game (host.log[idx].answers) and only revealed, question by question, at the end.
 const host = { code:null, teams:{}, themes:[], count:3, secs:30, levels:[1,2,3], deck:[], idx:0, answers:{}, log:[], ridx:0, timer:null, left:0, phase:"lobby" };
@@ -193,6 +206,7 @@ async function startHost(saved){
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
   $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
+  renderJoinQr($("#joinUrl").textContent);
   renderThemes(); renderTeamList(); renderCustom(); renderHistory();
   $("#count").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.n===host.count));
   $("#timer").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", +x.dataset.t===host.secs));
