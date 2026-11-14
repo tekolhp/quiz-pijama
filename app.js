@@ -63,6 +63,13 @@ async function openHost(code, h){
   peer.on("error", e=>{ if(e.type==="unavailable-id") msg("#lobbyMsg","Esse código já está em uso. Cria a sala de novo."); });
   $("#hostStatus").textContent="Sala online";
   peer.on("disconnected", ()=>{ $("#hostStatus").textContent="Reconectando a sala…"; });
+  // The game itself runs phone-to-tablet, so a dropped signaling socket goes unnoticed until a new phone
+  // can't find the room. Check every 4s and re-register; if the id was lost, recreate the peer with it.
+  if(!window._hostWatch) window._hostWatch=setInterval(async ()=>{
+    if(!host.code || hostConn) return;
+    if(peer && peer.disconnected && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} return; }
+    if((!peer || peer.destroyed) && !window._hostReopen){ window._hostReopen=true; try{ await openHost(host.code, handlers); }catch(e){} window._hostReopen=false; }
+  }, 4000);
   peer.on("open", ()=>{ $("#hostStatus").textContent="Sala online"; });
 }
 // player side
@@ -530,7 +537,10 @@ async function joinRoom(code){
     end: p => { renderRank($("#pRank"), p.scores); $("#pWinner").textContent=winnerText(p.scores); show("playerEnd"); sceneReact(true); },
     kick: () => { store(PLAYER_KEY, undefined); stopCountdown(); player.code=null; if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; $("#inCode").value=""; msg("#joinMsg","O host desfez a sala. Valeu por jogar!"); show("playerJoin"); },
     lobby: () => { player.idx=-1; $("#pScoresCard").hidden=true; $("#pTeamsCard").hidden=false; waitLobby(); },
-  }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; return msg("#joinMsg","Não achei essa sala. Confere o código e se o host já criou a sala."); }
+  }); }catch(e){ $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar"; const why = e && e.type==="peer-unavailable" ? "Não achei essa sala. Confere o código; se estiver certo, pede pro host recarregar a página dele e tenta de novo."
+      : e && e.message==="timeout" ? "A sala existe mas a conexão não fechou. Tenta no Wi-Fi da casa (ou no 4G, se estiver no Wi-Fi) e entra de novo."
+      : "Não deu pra entrar ("+((e&&(e.type||e.message))||"erro")+"). Tenta de novo; se repetir, o host recarrega a página.";
+    return msg("#joinMsg", why); }
   $("#btnEnter").disabled=false; $("#btnEnter").textContent="Entrar";
   player.hostSeen=Date.now(); player.stateKey=null;
   send("join",{ id:player.id });
