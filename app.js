@@ -226,7 +226,7 @@ async function startHost(saved){
       if(!host.teams[p.id]){
         const used = new Set(Object.values(host.teams).map(t=>t.name));
         const c = CREW.find(c=>!used.has(c.name)) || CREW[Object.keys(host.teams).length % CREW.length];
-        host.teams[p.id] = { name:c.name, color:c.color, sprite:c.sprite, ok:false, score:0 };
+        host.teams[p.id] = { name:c.name, color:c.color, sprite:c.sprite, ok:host.phase!=="lobby", score:0 };   // mid-match joiners play right away (the team list is not on the game screen)
         makeSay(pick(actors), c.name+" chegou!", 120);
       }
       broadcastTeams(); if(host.phase!=="lobby") sendCurrentState();
