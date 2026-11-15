@@ -451,10 +451,14 @@ function armFinish(b){
   clearTimeout(finishArmed); finishArmed=null; b.textContent=b.dataset.label; return true;
 }
 function playedCount(){ let n=0; host.log.forEach((L,i)=>{ if(L) n=Math.max(n,i+1); }); return n; }
-function renderFinishLobby(){ const b=$("#btnFinishLobby"); if(b) b.hidden = !(host.deck.length && playedCount()>0 && host.phase!=="end"); }
+function renderFinishLobby(){ const b=$("#btnFinishLobby"); if(b) b.hidden = !(playedCount()>0 && host.phase!=="end"); }
 $("#btnFinishLobby").addEventListener("click", ()=>{
   if(!armFinish($("#btnFinishLobby"))) return;
-  const n=playedCount(); host.deck=host.deck.slice(0,n); host.log=host.log.slice(0,n); show("hostGame"); startReveal();
+  const n=playedCount(); host.deck=host.deck.slice(0,n); host.log=host.log.slice(0,n);
+  // older builds wiped the question list when going back to the lobby; the answers survive, so rebuild
+  // placeholder questions and let the host mark right/wrong by tapping during the reveal
+  for(let i=0;i<n;i++) if(!host.deck[i]) host.deck[i]={ theme:"Pergunta "+(i+1), q:["(o texto dessa pergunta se perdeu — toca nas equipes que acertaram)", "—"], round:1 };
+  show("hostGame"); startReveal();
 });
 $("#btnFinish").addEventListener("click", ()=>{
   if(!armFinish($("#btnFinish"))) return;
