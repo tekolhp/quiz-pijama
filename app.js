@@ -432,6 +432,20 @@ $("#btnNext").addEventListener("click", ()=>{
 });
 
 // ======================= FINAL REVEAL: one question at a time, then the scoreboard =======================
+// End the match early: questions already played (the current one included if it was released) go to the reveal and scoring.
+let finishArmed=null;
+$("#btnFinish").addEventListener("click", ()=>{
+  const b=$("#btnFinish");
+  if(!finishArmed){ b.textContent="Toca de novo pra encerrar (vai pra revelação)"; finishArmed=setTimeout(()=>{ finishArmed=null; b.textContent="Encerrar a partida agora"; },4000); return; }
+  clearTimeout(finishArmed); finishArmed=null; b.textContent="Encerrar a partida agora";
+  stopTimer();
+  const released = host.phase==="question" || host.phase==="paused" || host.phase==="closed";
+  if((host.phase==="question" || host.phase==="paused") && !host.log[host.idx]) host.log[host.idx]={ answers:{...host.answers} };
+  const played = host.idx + (released ? 1 : 0);
+  if(played<=0){ host.deck=[]; host.phase="end"; saveHost(); return hostEnd(); }
+  host.deck = host.deck.slice(0, played); host.log = host.log.slice(0, played);
+  startReveal();
+});
 function startReveal(){
   host.deck.forEach((it,i)=>{                       // auto-mark every answer once; the host can fix marks while revealing
     const L = host.log[i] || (host.log[i] = { answers:{} });
