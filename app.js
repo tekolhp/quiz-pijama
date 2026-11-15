@@ -284,7 +284,7 @@ function renderTeamList(){
     cb.addEventListener("change", ()=>{ t.ok=cb.checked; broadcastTeams(); });
     lab.append(cb, el("i","dot"), document.createTextNode(t.name)); box.append(lab);
   });
-  $("#btnStart").disabled = false;
+  $("#btnStart").disabled = false; renderFinishLobby();
   $("#confirmedCount").textContent = playing().length+" confirmada(s) de "+ids.length;
 }
 function renderThemes(){
@@ -446,10 +446,18 @@ $("#btnNext").addEventListener("click", ()=>{
 // ======================= FINAL REVEAL: one question at a time, then the scoreboard =======================
 // End the match early: questions already played (the current one included if it was released) go to the reveal and scoring.
 let finishArmed=null;
+function armFinish(b){
+  if(!finishArmed){ b.dataset.label=b.textContent; b.textContent="Toca de novo pra encerrar (vai pra revelação)"; finishArmed=setTimeout(()=>{ finishArmed=null; b.textContent=b.dataset.label; },4000); return false; }
+  clearTimeout(finishArmed); finishArmed=null; b.textContent=b.dataset.label; return true;
+}
+function playedCount(){ let n=0; host.log.forEach((L,i)=>{ if(L) n=Math.max(n,i+1); }); return n; }
+function renderFinishLobby(){ const b=$("#btnFinishLobby"); if(b) b.hidden = !(host.deck.length && playedCount()>0 && host.phase!=="end"); }
+$("#btnFinishLobby").addEventListener("click", ()=>{
+  if(!armFinish($("#btnFinishLobby"))) return;
+  const n=playedCount(); host.deck=host.deck.slice(0,n); host.log=host.log.slice(0,n); show("hostGame"); startReveal();
+});
 $("#btnFinish").addEventListener("click", ()=>{
-  const b=$("#btnFinish");
-  if(!finishArmed){ b.textContent="Toca de novo pra encerrar (vai pra revelação)"; finishArmed=setTimeout(()=>{ finishArmed=null; b.textContent="Encerrar a partida agora"; },4000); return; }
-  clearTimeout(finishArmed); finishArmed=null; b.textContent="Encerrar a partida agora";
+  if(!armFinish($("#btnFinish"))) return;
   stopTimer();
   const released = host.phase==="question" || host.phase==="paused" || host.phase==="closed";
   if((host.phase==="question" || host.phase==="paused") && !host.log[host.idx]) host.log[host.idx]={ answers:{...host.answers} };
@@ -532,7 +540,7 @@ $("#btnDissolveConfirm").addEventListener("click", ()=>{
     stopTimer(); host.teams={}; host.deck=[]; host.phase="lobby"; host.code=null; clearHost(); $("#btnResume").hidden=true; show("home"); }, 400);
 });
 $("#btnAgain").addEventListener("click", ()=>{ host.phase="lobby"; host.deck=[]; host.log=[]; saveHost(); send("lobby",{}); renderThemes(); renderTeamList(); show("hostLobby"); });
-$("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); host.phase="lobby"; host.deck=[]; saveHost(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
+$("#btnBackLobby").addEventListener("click", ()=>{ stopTimer(); if(host.phase==="question"||host.phase==="paused"){ if(!host.log[host.idx]) host.log[host.idx]={ answers:{...host.answers} }; } host.phase="lobby"; saveHost(); renderFinishLobby(); send("lobby",{}); renderTeamList(); show("hostLobby"); });
 
 // Hide the aquarium while the on-screen keyboard is up, so the question stays visible on phones
 (()=>{ const ta=$("#pAnswer"); ta.addEventListener("focus", ()=>document.body.classList.add("typing")); ta.addEventListener("blur", ()=>document.body.classList.remove("typing"));
