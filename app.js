@@ -63,14 +63,17 @@ async function openHost(code, h){
   peer.on("error", e=>{ if(e.type==="unavailable-id") msg("#lobbyMsg","Esse código já está em uso. Cria a sala de novo."); });
   $("#hostStatus").textContent="Sala online";
   peer.on("disconnected", ()=>{ $("#hostStatus").textContent="Reconectando a sala…"; });
+
+  peer.on("open", ()=>{ $("#hostStatus").textContent="Sala online"; });
+}
+function startHostWatch(){
   // The game itself runs phone-to-tablet, so a dropped signaling socket goes unnoticed until a new phone
   // can't find the room. Check every 4s and re-register; if the id was lost, recreate the peer with it.
-  if(!window._hostWatch) window._hostWatch=setInterval(async ()=>{
+  if(window._hostWatch) return; window._hostWatch=setInterval(async ()=>{
     if(!host.code || hostConn) return;
     if(peer && peer.disconnected && !peer.destroyed){ try{ peer.reconnect(); }catch(e){} return; }
-    if((!peer || peer.destroyed) && !window._hostReopen){ window._hostReopen=true; try{ await openHost(host.code, handlers); }catch(e){} window._hostReopen=false; }
+    if((!peer || peer.destroyed || !peer.open) && !window._hostReopen){ window._hostReopen=true; try{ await openHost(host.code, handlers); }catch(e){} window._hostReopen=false; }
   }, 4000);
-  peer.on("open", ()=>{ $("#hostStatus").textContent="Sala online"; });
 }
 // player side
 async function openPlayer(code, h){
@@ -216,11 +219,13 @@ if(savedHost && savedHost.code && Date.now()-savedHost.savedAt < 6*3600e3){
 }
 $("#btnResume").addEventListener("click", ()=>startHost(savedHost));
 $("#btnHost").addEventListener("click", ()=>startHost(null));
+let startingHost=false;
 async function startHost(saved){
+  if(startingHost) return; startingHost=true;
   if(saved){ if(saved.phase==="paused") saved.phase="ready"; Object.assign(host, { code:saved.code, teams:saved.teams||{}, themes:saved.themes||[], count:(saved.count && saved.count<=8) ? saved.count : 3, secs:saved.secs||30, levels:saved.levels||[1,2,3], deck:saved.deck||[], gameId:saved.gameId||0, rounds:saved.rounds||0, idx:saved.idx||0, answers:saved.answers||{}, log:saved.log||[], ridx:saved.ridx||0, phase:saved.phase||"lobby" }); if(host.phase==="question") host.phase="ready"; }
   else host.code = roomCode();
   $("#btnHost").disabled=true; $("#btnHost").textContent="Abrindo sala…";
-  try{ await openHost(host.code, {
+  const H = {
     join: p => {
       if(!p.id) return;
       if(!host.teams[p.id]){
@@ -243,8 +248,15 @@ async function startHost(saved){
       renderHostAnswers(); saveHost();
       if(first) makeSay(pick(actors), host.teams[p.id].name+" respondeu!", 100);
     },
-  });
-  }catch(e){ $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)"; return msg("#homeMsg","Não consegui abrir a sala. Confere a internet e tenta de novo."); }
+  };
+  try{ await openHost(host.code, H); }
+  catch(e){
+    // A resumed match never waits on the network: the saved game opens right away and the room keeps
+    // retrying in the background (another tab may still hold the room id for a few seconds).
+    if(!saved){ startingHost=false; $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)"; return msg("#homeMsg","Não consegui abrir a sala. Confere a internet e tenta de novo."); }
+    handlers=H; $("#hostStatus").textContent="Reconectando a sala…";
+  }
+  startHostWatch(); startingHost=false;
   $("#btnHost").disabled=false; $("#btnHost").textContent="Criar sala (sou o host)";
   $("#roomCode").textContent = host.code;
   $("#joinUrl").textContent = location.origin + location.pathname + "?sala=" + host.code;
