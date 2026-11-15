@@ -651,3 +651,20 @@ function playerRev(p){
   if(me && player.revSeen!==p.i){ player.revSeen=p.i; sceneReact(!!me.ok); }
 }
 $("#btnLeave").addEventListener("click", ()=>{ store(PLAYER_KEY, undefined); stopCountdown(); if(hostConn){ try{hostConn.close();}catch(e){} hostConn=null; } if(peer){ try{peer.destroy();}catch(e){} peer=null; } document.body.classList.remove("teamed"); $("#pTeamName").hidden=true; player.me=null; player.idx=-1; player.code=null; show("home"); });
+
+// GitHub Pages caches index.html for ~10 min, so a device can keep running an old build after a deploy.
+// Check the live page every minute and reload into the new build when it's safe (never mid-question).
+(function watchForNewBuild(){
+  const mine = (document.querySelector('script[src*="app.js?v="]')?.getAttribute("src")||"").split("v=")[1];
+  if(!mine) return;
+  async function check(){
+    try{
+      const r = await fetch(location.pathname+"?nocache="+Date.now(), { cache:"no-store" });
+      const m = (await r.text()).match(/app\.js\?v=(\d+)/); if(!m || m[1]===mine) return;
+      if(host.phase==="question" || host.phase==="paused" || player.open) return;
+      const q = new URLSearchParams(location.search); q.set("v", m[1]);
+      location.replace(location.pathname+"?"+q.toString());
+    }catch(e){}
+  }
+  setTimeout(check, 3000); setInterval(check, 60000);
+})();
