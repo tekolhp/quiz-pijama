@@ -511,7 +511,7 @@ const HISTORY_KEY="quiz.history";
 function loadHistory(){ const h=load(HISTORY_KEY); return Array.isArray(h)?h:[]; }
 function recordMatch(list){
   if(!host.gameId) return;
-  const h=loadHistory(); if(h.some(m=>m.id===host.gameId)) return;     // once per match (reloads, re-renders)
+  const h=loadHistory().filter(m=>m.id!==host.gameId);     // one entry per match; re-finishing after fixing marks replaces it
   const top=list.length?list[0].score:0;
   h.unshift({ id:host.gameId, at:Date.now(), rounds:host.rounds||host.count, questions:host.deck.length, themes:host.themes.slice(), levels:host.levels.slice(),
     winners:list.filter(x=>x.score===top).map(x=>x.team), scores:list.map(x=>({ team:x.team, color:x.color, score:x.score })) });
@@ -692,3 +692,6 @@ $("#btnLeave").addEventListener("click", ()=>{ store(PLAYER_KEY, undefined); sto
   }
   setTimeout(check, 3000); setInterval(check, 60000);
 })();
+
+// Back from the scoreboard to the reveal, to fix right/wrong marks; finishing again recomputes the scores.
+$("#btnBackReveal").addEventListener("click", ()=>{ if(!host.deck.length) return; host.phase="reveal"; host.ridx=0; saveHost(); showReveal(0); });
