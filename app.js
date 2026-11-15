@@ -257,7 +257,7 @@ async function startHost(saved){
     if(host.phase==="end") hostEnd();
     else if(host.phase==="reveal") showReveal(host.ridx);
     else if(host.phase==="closed"){ show("hostGame"); loadQuestionView(); closedView(); }
-    else { show("hostGame"); loadQuestion(); }
+    else { const keep=host.answers||{}; show("hostGame"); loadQuestion(); host.answers=keep; renderHostAnswers(); saveHost(); }   // a reload mid-question keeps the answers already sent
   } else show("hostLobby");
   saveHost();
 }
